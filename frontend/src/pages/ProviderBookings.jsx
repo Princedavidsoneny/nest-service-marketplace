@@ -1,27 +1,70 @@
  import { useEffect, useState } from "react";
- import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { fetchProviderBookings, updateBookingsStatus } from "../services";
 import { getUser } from "../auth";
 
+function formatDateValue(value) {
+  if (!value) return "N/A";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function dedupeRows(list = []) {
+  const map = new Map();
+
+  for (const item of list) {
+    if (!item || item.id == null) continue;
+    if (!map.has(item.id)) {
+      map.set(item.id, item);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+function normalizeBooking(b) {
+  return {
+    ...b,
+    title: b.title || b.serviceTitle || b.service_name || "Service",
+    city:
+      b.city ||
+      b.serviceCity ||
+      b.locationCity ||
+      b.service?.city ||
+      b.customerCity ||
+      "N/A",
+    displayDate: formatDateValue(
+      b.date || b.bookingDate || b.scheduledDate || b.preferredDate || b.createdAt
+    ),
+  };
+}
+
 export default function ProviderBookings() {
   const user = getUser();
-   const nav = useNavigate();
+  const nav = useNavigate();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
 
-  // ---- Load provider bookings ----
   async function load() {
     setLoading(true);
     setErr("");
     setMsg("");
+
     try {
       const data = await fetchProviderBookings();
-
-      // allow either: array OR { rows: [...] }
       const list = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
-      setRows(list);
+      setRows(dedupeRows(list).map(normalizeBooking));
     } catch (e) {
       setErr(e?.message || "Failed to load provider bookings");
     } finally {
@@ -29,16 +72,14 @@ export default function ProviderBookings() {
     }
   }
 
-  // ---- Update booking status ----
   async function handleStatus(id, status) {
     setLoading(true);
     setErr("");
     setMsg("");
+
     try {
-      // ✅ call your services.js PATCH
       await updateBookingsStatus(id, status);
 
-      // ✅ instant UI update (no need to refresh page)
       setRows((prev) =>
         prev.map((b) => (b.id === id ? { ...b, status } : b))
       );
@@ -52,11 +93,11 @@ export default function ProviderBookings() {
   }
 
   useEffect(() => {
+    if (!user) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- Guards ----
   if (!user) {
     return (
       <div style={{ maxWidth: 900, margin: "0 auto", padding: 16 }}>
@@ -77,7 +118,6 @@ export default function ProviderBookings() {
     );
   }
 
-  // ---- UI ----
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
@@ -107,7 +147,7 @@ export default function ProviderBookings() {
 
       <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
         {rows.map((b) => {
-          const status = (b.status || "").toLowerCase().trim(); // ✅ normalize
+          const status = String(b.status || "").toLowerCase().trim();
           const canAcceptReject = status === "pending";
           const canComplete = status === "accepted";
 
@@ -123,15 +163,15 @@ export default function ProviderBookings() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 16 }}>
-                    {b.title || b.serviceTitle || "Service"}
+                    {b.title}
                   </div>
 
                   <div style={{ marginTop: 6, opacity: 0.85 }}>
                     <span style={{ marginRight: 10 }}>
-                      Date: {b.date || "N/A"}
+                      Date: {b.displayDate}
                     </span>
                     <span style={{ marginRight: 10 }}>
-                      City: {b.city || "N/A"}
+                      City: {b.city}
                     </span>
                   </div>
 
@@ -158,7 +198,7 @@ export default function ProviderBookings() {
                     </span>
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
                     <button
                       onClick={() => handleStatus(b.id, "accepted")}
                       disabled={!canAcceptReject || loading}
@@ -208,14 +248,18 @@ export default function ProviderBookings() {
                     </button>
 
                     <button
-  onClick={() => nav(`/messages/${b.id}`)}
-  className="bg-cyan-500 text-white px-3 py-1 rounded"
->
-  Message
-</button>
-
-
-
+                      onClick={() => nav(`/messages/${b.id}`)}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 10,
+                        border: "0",
+                        background: "#06b6d4",
+                        color: "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Message
+                    </button>
                   </div>
 
                   {!canComplete && status === "pending" && (

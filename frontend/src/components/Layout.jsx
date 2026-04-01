@@ -1,32 +1,39 @@
- // frontend/src/components/Layout.jsx
-import { Link, Outlet, useNavigate } from "react-router-dom";
+ import { Link, Outlet, useNavigate } from "react-router-dom";
 import { getUser, logout } from "../auth";
+import NotificationsBell from "./NotificationsBell";
 
- import NotificationsBell from "./NotificationsBell";
+function navClass() {
+  return "text-sm md:text-base text-slate-300 hover:text-white transition";
+}
 
 export default function Layout() {
   const user = getUser();
   const navigate = useNavigate();
 
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
+
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      <header className="border-b border-white/10 bg-gray-950/60 backdrop-blur">
-        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
-          <Link to="/" className="text-xl font-extrabold tracking-tight">
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/80 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
+          <Link to="/" className="text-3xl font-extrabold tracking-tight text-white">
             Nest
           </Link>
 
-          <nav className="flex items-center gap-4 text-sm">
-            <Link className="hover:text-white" to="/">
+          <nav className="flex items-center gap-4 md:gap-5">
+            <Link className={navClass()} to="/">
               Home
             </Link>
 
             {!user && (
               <>
-                <Link className="hover:text-white" to="/login">
+                <Link className={navClass()} to="/login">
                   Login
                 </Link>
-                <Link className="hover:text-white" to="/register">
+                <Link className={navClass()} to="/register">
                   Register
                 </Link>
               </>
@@ -34,33 +41,35 @@ export default function Layout() {
 
             {user?.role === "customer" && (
               <>
-                <Link className="hover:text-white" to="/my-bookings">
+                <Link className={navClass()} to="/my-bookings">
                   My Bookings
                 </Link>
 
-                <div className="flex items-center gap-3">
-  <NotificationsBell />
-  {/* existing Login/Logout button here */}
-</div>
-                <Link className="hover:text-white" to="/my-quotes">
+                <NotificationsBell />
+
+                <Link className={navClass()} to="/my-quotes">
                   My Quotes
                 </Link>
               </>
-          
             )}
 
             {user?.role === "admin" && (
-  <Link to="/admin/users">Admin Users</Link>
-)}
+              <Link className={navClass()} to="/admin/users">
+                Admin Users
+              </Link>
+            )}
 
             {user?.role === "provider" && (
               <>
-                <Link className="hover:text-white" to="/provider">Provider</Link>
-                
-                <Link className="hover:text-white" to="/provider/bookings">
+                <Link className={navClass()} to="/provider">
+                  Provider
+                </Link>
+
+                <Link className={navClass()} to="/provider/bookings">
                   Provider Bookings
                 </Link>
-                <Link className="hover:text-white" to="/provider/quotes">
+
+                <Link className={navClass()} to="/provider/quotes">
                   Provider Quotes
                 </Link>
               </>
@@ -68,11 +77,9 @@ export default function Layout() {
 
             {user && (
               <button
-                className="px-3 py-1 rounded bg-white/10 hover:bg-white/15"
-                onClick={() => {
-                  logout();
-                  navigate("/login");
-                }}
+                type="button"
+                onClick={handleLogout}
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm md:text-base text-slate-300 hover:bg-white/10 hover:text-white transition"
               >
                 Logout
               </button>
@@ -81,7 +88,7 @@ export default function Layout() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-6">
+      <main>
         <Outlet />
       </main>
     </div>

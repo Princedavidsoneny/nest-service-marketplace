@@ -1,12 +1,24 @@
-import { useEffect, useState } from "react";
+ import { useEffect, useState } from "react";
 import { fetchProviderQuotes, createQuoteOffer } from "../services";
 import { getUser } from "../auth";
 import { PageTitle, Card, Btn, Badge } from "../components/ui";
+
+function dedupeById(list = []) {
+  const map = new Map();
+  for (const item of list) {
+    if (!item || item.id == null) continue;
+    if (!map.has(item.id)) {
+      map.set(item.id, item);
+    }
+  }
+  return Array.from(map.values());
+}
 
 export default function ProviderQuotes() {
   const user = getUser();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [sendingId, setSendingId] = useState(null);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
 
@@ -14,9 +26,11 @@ export default function ProviderQuotes() {
     setErr("");
     setMsg("");
     setLoading(true);
+
     try {
-      const data = await fetchProviderQuotes(user?.token);
-      setRows(Array.isArray(data) ? data : []);
+      const data = await fetchProviderQuotes();
+      const list = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+      setRows(dedupeById(list));
     } catch (e) {
       setErr(e.message || "Failed to load provider quotes");
     } finally {
@@ -39,7 +53,40 @@ export default function ProviderQuotes() {
   }
 
   const toneFor = (status) =>
-    status === "accepted" ? "green" : status === "rejected" ? "red" : status === "offered" ? "amber" : "slate";
+    status === "accepted"
+      ? "green"
+      : status === "rejected"
+      ? "red"
+      : status === "offered"
+      ? "amber"
+      : "slate";
+
+  async function handleSendOffer(q) {
+    setErr("");
+    setMsg("");
+
+    const amountStr = prompt("Offer amount (numbers only e.g. 15000):");
+    if (!amountStr) return;
+
+    const amount = Number(String(amountStr).replace(/,/g, "").trim());
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setErr("Enter a valid amount");
+      return;
+    }
+
+    const message = prompt("Short message to customer (optional):") || "";
+
+    try {
+      setSendingId(q.id);
+      await createQuoteOffer(q.id, { amount, message });
+      setMsg("Offer sent ✅");
+      await load();
+    } catch (e) {
+      setErr(e.message || "Failed to send offer");
+    } finally {
+      setSendingId(null);
+    }
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 text-white">
@@ -55,52 +102,43 @@ export default function ProviderQuotes() {
       </div>
 
       <div className="space-y-3">
-        {rows.map((q) => (
-          <Card key={q.id}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="font-semibold">{q.title}</div>
-                <div className="text-sm opacity-80 mt-1 flex items-center gap-2">
-                  <Badge tone={toneFor(q.status)}>{(q.status || "pending").toUpperCase()}</Badge>
-                  <span>Quote ID: {q.id}</span>
+        {rows.map((q) => {
+          const status = String(q.status || "pending").toLowerCase();
+
+          return (
+            <Card key={q.id}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="font-semibold">{q.title || q.serviceTitle || "Quote Request"}</div>
+
+                  <div className="text-sm opacity-80 mt-1 flex items-center gap-2">
+                    <Badge tone={toneFor(status)}>{status.toUpperCase()}</Badge>
+                    <span>Quote ID: {q.id}</span>
+                  </div>
+
+                  {q.details && (
+                    <div className="text-sm mt-2">
+                      <b>Customer request:</b> {q.details}
+                    </div>
+                  )}
+
+                  {q.city && (
+                    <div className="text-sm mt-2 opacity-80">
+                      <b>City:</b> {q.city}
+                    </div>
+                  )}
                 </div>
 
-                {q.details && (
-                  <div className="text-sm mt-2">
-                    <b>Customer request:</b> {q.details}
-                  </div>
-                )}
+                <Btn
+                  onClick={() => handleSendOffer(q)}
+                  disabled={sendingId === q.id || status === "accepted" || status === "rejected"}
+                >
+                  {sendingId === q.id ? "Sending..." : "Send Offer"}
+                </Btn>
               </div>
-
-              <Btn
-                onClick={async () => {
-                  setErr("");
-                  setMsg("");
-
-                  const amountStr = prompt("Offer amount (numbers only e.g. 15000):");
-                  if (!amountStr) return;
-                  const amount = Number(amountStr);
-                  if (!Number.isFinite(amount) || amount <= 0) {
-                    setErr("Enter a valid amount");
-                    return;
-                  }
-
-                  const message = prompt("Short message to customer (optional):") || "";
-
-                  try {
-                    await createQuoteOffer(q.id, { amount, message }, user.token);
-                    setMsg("Offer sent ✅");
-                    load();
-                  } catch (e) {
-                    setErr(e.message || "Failed to send offer");
-                  }
-                }}
-              >
-                Send Offer
-              </Btn>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
 
         {!rows.length && !loading && (
           <div className="opacity-80">No quote requests yet.</div>

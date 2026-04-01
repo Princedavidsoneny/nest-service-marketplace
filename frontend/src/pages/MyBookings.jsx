@@ -16,6 +16,53 @@ function badgeTone(status) {
   return "bg-white/5 text-slate-300 border-white/10";
 }
 
+function formatDateValue(value) {
+  if (!value) return "N/A";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function dedupeRows(list = []) {
+  const map = new Map();
+
+  for (const item of list) {
+    if (!item || item.id == null) continue;
+    if (!map.has(item.id)) {
+      map.set(item.id, item);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+function normalizeBooking(b) {
+  return {
+    ...b,
+    title: b.title || b.serviceTitle || b.service_name || "Service Booking",
+    category: b.category || b.serviceCategory || b.service?.category || "N/A",
+    city:
+      b.city ||
+      b.serviceCity ||
+      b.locationCity ||
+      b.service?.city ||
+      b.providerCity ||
+      "N/A",
+    displayDate: formatDateValue(
+      b.date || b.bookingDate || b.scheduledDate || b.preferredDate || b.createdAt
+    ),
+    displayPrice: money(b.price || b.price_from || b.amount),
+  };
+}
+
 export default function MyBookings() {
   const nav = useNavigate();
   const [rows, setRows] = useState([]);
@@ -26,8 +73,12 @@ export default function MyBookings() {
     try {
       setLoading(true);
       setErr("");
+
       const data = await fetchMyBookings();
-      setRows(Array.isArray(data) ? data : data?.rows || []);
+      const list = Array.isArray(data) ? data : data?.rows || [];
+      const cleaned = dedupeRows(list).map(normalizeBooking);
+
+      setRows(cleaned);
     } catch (e) {
       setErr(e?.message || "Failed to load bookings");
     } finally {
@@ -79,14 +130,15 @@ export default function MyBookings() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <h2 className="text-2xl font-bold text-white">{b.title}</h2>
+
                     <div className="mt-2 space-y-1 text-sm text-slate-300">
                       <div>
-                        {b.category} • {b.city || "N/A"}
+                        {b.category} • {b.city}
                       </div>
                       <div>Booking ID: {b.id}</div>
-                      <div>Date: {b.date || "N/A"}</div>
+                      <div>Date: {b.displayDate}</div>
                       <div>Note: {b.note || "N/A"}</div>
-                      <div>Starting price: {money(b.price || b.price_from)}</div>
+                      <div>Starting price: {b.displayPrice}</div>
                     </div>
                   </div>
 
@@ -115,8 +167,8 @@ export default function MyBookings() {
                   {String(b.status || "").toLowerCase() === "completed" && (
                     <button
                       type="button"
-                      onClick={() => nav(`/review/${b.id}`)}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-semibold text-white hover:bg-white/10"
+                      onClick={() => nav(`/leave-review/${b.id}`)}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-5 py-2 font-semibold text-white hover:bg-white/10"
                     >
                       Leave Review
                     </button>

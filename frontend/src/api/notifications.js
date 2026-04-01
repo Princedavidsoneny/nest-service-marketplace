@@ -1,4 +1,7 @@
- const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+ const API =
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://127.0.0.1:5000";
 
 function authHeaders() {
   const token = localStorage.getItem("token");
@@ -8,36 +11,40 @@ function authHeaders() {
   };
 }
 
+async function toJson(res) {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error || "Request failed");
+  }
+  return data;
+}
+
 export async function fetchNotifications() {
-  const r = await fetch(`${API}/notifications`, {
+  const res = await fetch(`${API}/notifications`, {
     headers: authHeaders(),
   });
-  if (!r.ok) throw new Error("Failed to load notifications");
-  return r.json();
+  return toJson(res);
 }
 
 export async function fetchUnreadCount() {
-  const r = await fetch(`${API}/notifications/unread-count`, {
+  const res = await fetch(`${API}/notifications/unread-count`, {
     headers: authHeaders(),
   });
-  if (!r.ok) throw new Error("Failed to load unread count");
-  return r.json();
+  return toJson(res);
 }
 
 export async function markNotificationRead(id) {
-  const r = await fetch(`${API}/notifications/${id}/read`, {
+  const res = await fetch(`${API}/notifications/${id}/read`, {
     method: "PATCH",
     headers: authHeaders(),
   });
-  if (!r.ok) throw new Error("Failed to mark notification as read");
-  return r.json();
+  return toJson(res);
 }
 
 export async function markAllRead() {
-  const r = await fetch(`${API}/notifications/read-all`, {
+  const res = await fetch(`${API}/notifications/read-all`, {
     method: "PATCH",
     headers: authHeaders(),
   });
-  if (!r.ok) throw new Error("Failed to mark all notifications as read");
-  return r.json();
+  return toJson(res);
 }

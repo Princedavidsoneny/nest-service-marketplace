@@ -1,30 +1,106 @@
- import { useEffect, useState } from "react";
+ import { useEffect, useMemo, useState } from "react";
 import { createService, fetchMyServices } from "../services";
-import { getUser } from "../auth";
+
+function money(value) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n) || n <= 0) return "Negotiable";
+  return `₦${n.toLocaleString()}`;
+}
+
+function getServiceImage(service) {
+  const text = `${service?.title || ""} ${service?.category || ""}`.toLowerCase();
+
+  if (text.includes("plumb")) return "/images/services/plumber.jpg";
+  if (text.includes("electric")) return "/images/services/electrician.jpg";
+  if (text.includes("clean")) return "/images/services/cleaner.jpg";
+  if (text.includes("mechanic")) return "/images/services/mechanic.jpg";
+  if (text.includes("labour") || text.includes("labor")) return "/images/services/labourer.jpg";
+  if (text.includes("tile")) return "/images/services/tiler.jpg";
+  if (text.includes("paint")) return "/images/services/painter.jpg";
+  if (text.includes("carpent")) return "/images/services/carpenter.jpg";
+  if (text.includes("move")) return "/images/services/moving.jpg";
+
+  return "/images/services/default.jpg";
+}
+
+function dedupeById(list = []) {
+  const map = new Map();
+  for (const item of list) {
+    if (!item || item.id == null) continue;
+    if (!map.has(item.id)) {
+      map.set(item.id, item);
+    }
+  }
+  return Array.from(map.values());
+}
+
+function friendlyErrorMessage(error) {
+  const raw = String(error?.message || "").toLowerCase();
+
+  if (raw.includes("missing token") || raw.includes("invalid token")) {
+    return "Please log in again and try.";
+  }
+
+  if (raw.includes("forbidden")) {
+    return "Only providers can create services.";
+  }
+
+  if (raw.includes("title")) {
+    return "Service title is required.";
+  }
+
+  if (raw.includes("category")) {
+    return "Please select a category.";
+  }
+
+  if (raw.includes("description")) {
+    return "Please enter a service description.";
+  }
+
+  return "Something went wrong. Please try again.";
+}
 
 export default function ProviderDashboard() {
-  const user = getUser();
-
-  const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
-  const [city, setCity] = useState("");
-  const [priceFrom, setPriceFrom] = useState("");
-  const [description, setDescription] = useState("");
-
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+
+  const [form, setForm] = useState({
+    title: "",
+    category: "",
+    city: "",
+    priceFrom: "",
+    description: "",
+  });
+
+  const categoryOptions = [
+    "plumber",
+    "electrician",
+    "cleaner",
+    "mechanic",
+    "labourer",
+    "tiler",
+    "painter",
+    "carpenter",
+    "generator repair",
+    "appliance repair",
+    "moving service",
+    "general",
+  ];
 
   async function load() {
     try {
       setLoading(true);
       setErr("");
-      const data = await fetchMyServices(user?.token);
-      setRows(Array.isArray(data) ? data : data?.services || []);
+
+      const data = await fetchMyServices();
+      const list = Array.isArray(data) ? data : data?.rows || [];
+      setServices(dedupeById(list));
     } catch (e) {
       setErr(e?.message || "Failed to load your services");
+      setServices([]);
     } finally {
       setLoading(false);
     }
@@ -34,118 +110,236 @@ export default function ProviderDashboard() {
     load();
   }, []);
 
-  async function handleCreate(e) {
+  function updateField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function resetForm() {
+    setForm({
+      title: "",
+      category: "",
+      city: "",
+      priceFrom: "",
+      description: "",
+    });
+    setErr("");
+    setMsg("");
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault();
 
     try {
       setErr("");
       setMsg("");
 
-      if (!title.trim()) {
-        setErr("Service title is required.");
+      const title = form.title.trim();
+      const category = form.category.trim();
+      const city = form.city.trim();
+      const description = form.description.trim();
+      const priceNumber = Number(form.priceFrom || 0);
+
+      if (!title) {
+        setErr("Service title is required");
         return;
       }
-      if (!category.trim()) {
-        setErr("Category is required.");
+
+      if (!category) {
+        setErr("Category is required");
         return;
       }
-      if (!description.trim()) {
-        setErr("Description is required.");
+
+      if (!description) {
+        setErr("Description is required");
+        return;
+      }
+
+      if (form.priceFrom && (!Number.isFinite(priceNumber) || priceNumber < 0)) {
+        setErr("Starting price must be a valid number");
         return;
       }
 
       setSaving(true);
 
-      await createService(
-        {
-          title: title.trim(),
-          category: category.trim(),
-          city: city.trim(),
-          price_from: priceFrom.trim(),
-          description: description.trim(),
-        },
-        user?.token
-      );
+      await createService({
+        title,
+        category,
+        city,
+        priceFrom: form.priceFrom ? priceNumber : null,
+        description,
+      });
 
       setMsg("Service created successfully.");
-      setTitle("");
-      setCategory("");
-      setCity("");
-      setPriceFrom("");
-      setDescription("");
-      load();
-    } catch (e2) {
-      setErr(e2?.message || "Failed to create service");
+      resetForm();
+      await load();
+    } catch (e) {
+      setErr(friendlyErrorMessage(e));
     } finally {
       setSaving(false);
     }
   }
 
+  const stats = useMemo(() => {
+    const total = services.length;
+    const withCity = services.filter((s) => s?.city).length;
+    const priced = services.filter((s) => Number(s?.priceFrom || s?.price_from || 0) > 0).length;
+    return { total, withCity, priced };
+  }, [services]);
+
   return (
-    <div className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
-      <div className="mx-auto max-w-6xl">
-        <h1 className="text-3xl font-extrabold text-white">Provider Dashboard</h1>
-        <p className="mt-2 text-slate-300">
-          Create and manage your service listings.
-        </p>
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <div className="mx-auto max-w-7xl px-4 py-8">
+        <div className="mb-10 grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+          <div>
+            <h1 className="text-4xl font-extrabold tracking-tight text-white md:text-5xl">
+              Provider Dashboard
+            </h1>
+            <p className="mt-3 max-w-2xl text-base text-slate-300 md:text-lg">
+              Create and manage your service listings, set your pricing, and make your
+              business attractive to customers searching for trusted local professionals.
+            </p>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[420px,1fr]">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <h2 className="mb-4 text-2xl font-bold text-white">Create a Service</h2>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-400">My services</div>
+                <div className="mt-1 text-2xl font-bold text-white">{stats.total}</div>
+              </div>
 
-            <form onSubmit={handleCreate} className="space-y-4">
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Service title (e.g. Electrician)"
-                className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none"
-              />
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-400">With city</div>
+                <div className="mt-1 text-2xl font-bold text-white">{stats.withCity}</div>
+              </div>
 
-              <input
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="Category"
-                className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none"
-              />
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-400">With price</div>
+                <div className="mt-1 text-2xl font-bold text-white">{stats.priced}</div>
+              </div>
+            </div>
+          </div>
 
-              <input
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="City (optional)"
-                className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none"
-              />
+          <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-2xl">
+            <img
+              src="/images/hero-handyman.jpg"
+              alt="Provider dashboard"
+              className="h-full max-h-[340px] w-full object-cover"
+              onError={(e) => {
+                e.currentTarget.src = "/images/services/default.jpg";
+              }}
+            />
+          </div>
+        </div>
 
-              <input
-                value={priceFrom}
-                onChange={(e) => setPriceFrom(e.target.value)}
-                placeholder="Price from (₦)"
-                className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none"
-              />
+        <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur">
+            <div className="mb-5">
+              <h2 className="text-2xl font-bold text-white">Create a Service</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Add a professional service customers can book or request a quote for.
+              </p>
+            </div>
 
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Service description"
-                rows={5}
-                className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none"
-              />
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">Service title</label>
+                <input
+                  value={form.title}
+                  onChange={(e) => updateField("title", e.target.value)}
+                  placeholder="e.g. Home plumbing repair"
+                  className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
+                />
+              </div>
 
-              {err && <div className="text-sm text-red-400">{err}</div>}
-              {msg && <div className="text-sm text-green-400">{msg}</div>}
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">Category</label>
+                <select
+                  value={form.category}
+                  onChange={(e) => updateField("category", e.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none focus:border-cyan-400/60"
+                >
+                  <option value="">Select category</option>
+                  {categoryOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-              <button
-                type="submit"
-                disabled={saving}
-                className="w-full rounded-2xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-60"
-              >
-                {saving ? "Creating..." : "Create Service"}
-              </button>
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">City</label>
+                <input
+                  value={form.city}
+                  onChange={(e) => updateField("city", e.target.value)}
+                  placeholder="e.g. Lagos"
+                  className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">Starting price (₦)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.priceFrom}
+                  onChange={(e) => updateField("priceFrom", e.target.value)}
+                  placeholder="e.g. 15000"
+                  className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => updateField("description", e.target.value)}
+                  placeholder="Describe what you offer and why customers should book you"
+                  rows={5}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
+                />
+              </div>
+
+              {msg ? (
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                  {msg}
+                </div>
+              ) : null}
+
+              {err ? (
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {err}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-2xl bg-cyan-500 px-6 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60"
+                >
+                  {saving ? "Saving..." : "Create Service"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  disabled={saving}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-semibold text-white transition hover:bg-white/10 disabled:opacity-60"
+                >
+                  Reset Form
+                </button>
+              </div>
             </form>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-white">My Services</h2>
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-bold text-white">My Services</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  All services you have published on Nest.
+                </p>
+              </div>
+
               <button
                 type="button"
                 onClick={load}
@@ -156,32 +350,59 @@ export default function ProviderDashboard() {
             </div>
 
             {loading ? (
-              <div className="text-slate-300">Loading services...</div>
-            ) : rows.length === 0 ? (
-              <div className="text-slate-300">No services yet.</div>
+              <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-6 text-slate-300">
+                Loading services...
+              </div>
+            ) : services.length === 0 ? (
+              <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-6 text-slate-300">
+                No services yet. Create your first service from the form.
+              </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
-                {rows.map((s) => (
+                {services.map((service) => (
                   <div
-                    key={s.id}
-                    className="rounded-2xl border border-white/10 bg-slate-900/50 p-4"
+                    key={service.id}
+                    className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/50 shadow-lg"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-lg font-bold text-white">{s.title}</h3>
-                        <p className="mt-1 text-sm text-slate-300">
-                          {(s.category || "General")} • {(s.city || "N/A")}
-                        </p>
+                    <img
+                      src={getServiceImage(service)}
+                      alt={service.title}
+                      className="h-40 w-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = "/images/services/default.jpg";
+                      }}
+                    />
+
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-lg font-semibold text-white">
+                            {service.title}
+                          </h3>
+                          <div className="mt-1 text-sm text-slate-300">
+                            {(service.category || "General")} • {(service.city || "N/A")}
+                          </div>
+                        </div>
+
+                        <div className="rounded-full border border-white/10 bg-slate-950/80 px-3 py-1 text-sm font-semibold text-cyan-300">
+                          {money(service.priceFrom || service.price_from)}
+                        </div>
                       </div>
 
-                      <div className="rounded-full border border-white/10 bg-slate-950 px-3 py-1 text-sm font-semibold text-cyan-300">
-                        ₦{Number(s.price_from || 0).toLocaleString()}
+                      <p className="mt-3 min-h-[48px] text-sm text-slate-300">
+                        {service.description || "No description provided."}
+                      </p>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                          Service ID: {service.id}
+                        </span>
+
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                          Active
+                        </span>
                       </div>
                     </div>
-
-                    <p className="mt-4 text-sm leading-6 text-slate-300">
-                      {s.description || "No description"}
-                    </p>
                   </div>
                 ))}
               </div>

@@ -7,8 +7,18 @@ import {
   markNotificationRead,
 } from "../api/notifications";
 
+function notificationTarget(item) {
+  const type = String(item?.type || "").toLowerCase();
+
+  if (type.includes("quote")) return "/my-quotes";
+  if (type.includes("booking")) return "/my-bookings";
+  if (type.includes("provider")) return "/provider-bookings";
+
+  return null;
+}
+
 export default function NotificationsBell() {
-  const nav = useNavigate();
+  const navigate = useNavigate();
   const boxRef = useRef(null);
 
   const [open, setOpen] = useState(false);
@@ -20,45 +30,31 @@ export default function NotificationsBell() {
     try {
       const data = await fetchUnreadCount();
       setUnread(Number(data?.count || 0));
-    } catch {
+    } catch (err) {
+      console.error("Failed to load unread count:", err);
       setUnread(0);
     }
   }
 
-  async function loadNotifications() {
+  async function loadItems() {
     try {
       setLoading(true);
       const data = await fetchNotifications();
-      setItems(Array.isArray(data) ? data : []);
-    } catch {
+      setItems(Array.isArray(data) ? data : data?.items || []);
+    } catch (err) {
+      console.error("Failed to load notifications:", err);
       setItems([]);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    loadCount();
-    const t = setInterval(loadCount, 10000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (boxRef.current && !boxRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  async function handleToggle() {
+  async function handleOpen() {
     const next = !open;
     setOpen(next);
+
     if (next) {
-      await loadNotifications();
+      await loadItems();
       await loadCount();
     }
   }
@@ -66,110 +62,143 @@ export default function NotificationsBell() {
   async function handleMarkAllRead() {
     try {
       await markAllRead();
-      await loadNotifications();
-      await loadCount();
-    } catch {}
+
+      setUnread(0);
+      setItems((prev) =>
+        prev.map((item) => ({
+          ...item,
+          is_read: 1,
+          read: 1,
+        }))
+      );
+    } catch (err) {
+      console.error("Failed to mark all as read:", err);
+    }
   }
 
   async function handleItemClick(item) {
     try {
-      if (!item?.id) return;
+      const unreadItem = !item?.is_read && !item?.read;
 
-      await markNotificationRead(item.id);
-      await loadCount();
+      if (unreadItem) {
+        await markNotificationRead(item.id);
 
-      const type = item.type || "";
+        setItems((prev) =>
+          prev.map((n) =>
+            n.id === item.id ? { ...n, is_read: 1, read: 1 } : n
+          )
+        );
 
-      if (type === "quote_offer" || type === "quote_status") {
-        nav("/my-quotes");
-      } else if (type === "booking" || type === "booking_status") {
-        nav("/my-bookings");
-      } else {
-        nav("/");
+        setUnread((prev) => Math.max(0, prev - 1));
       }
 
+      const target = notificationTarget(item);
       setOpen(false);
-    } catch {
-      if (item?.type === "quote_offer" || item?.type === "quote_status") {
-        nav("/my-quotes");
-      } else if (item?.type === "booking" || item?.type === "booking_status") {
-        nav("/my-bookings");
-      } else {
-        nav("/");
+
+      if (target) {
+        navigate(target);
       }
-      setOpen(false);
+    } catch (err) {
+      console.error("Notification click error:", err);
     }
   }
 
+  useEffect(() => {
+    loadCount();
+  }, []);
+
+  useEffect(() => {
+    function handleOutsideClick(event) {
+      if (boxRef.current && !boxRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
   return (
-    <div className="relative z-[9999]" ref={boxRef}>
+    <div className="relative" ref={boxRef}>
       <button
         type="button"
-        onClick={handleToggle}
-        className="relative text-xl leading-none text-yellow-400 hover:scale-105 transition"
-        title="Notifications"
+        onClick={handleOpen}
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white hover:bg-slate-800"
+        aria-label="Notifications"
       >
-        🔔
-        {unread > 0 && (
-          <span className="absolute -right-2 -top-2 min-w-[20px] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[11px] font-bold text-white">
+        <span className="text-lg">🔔</span>
+
+        {unread > 0 ? (
+          <span className="absolute -right-1 -top-1 min-w-[20px] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-xs font-bold text-white">
             {unread > 99 ? "99+" : unread}
           </span>
-        )}
+        ) : null}
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full z-[99999] mt-3 w-[340px] rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl backdrop-blur">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-lg font-semibold text-white">Notifications</div>
+      {open ? (
+        <div className="absolute right-0 z-[9999] mt-3 w-80 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+            <h3 className="text-sm font-semibold text-white">Notifications</h3>
+
             <button
               type="button"
               onClick={handleMarkAllRead}
-              className="text-sm font-medium text-cyan-400 hover:text-cyan-300"
+              className="text-xs font-medium text-cyan-400 hover:text-cyan-300"
             >
               Mark all read
             </button>
           </div>
 
-          <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+          <div className="max-h-96 overflow-y-auto">
             {loading ? (
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-slate-300">
-                Loading...
-              </div>
+              <div className="px-4 py-4 text-sm text-slate-400">Loading...</div>
             ) : items.length === 0 ? (
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-slate-300">
+              <div className="px-4 py-4 text-sm text-slate-400">
                 No notifications yet.
               </div>
             ) : (
-              items.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleItemClick(item)}
-                  className={`block w-full rounded-2xl border p-4 text-left transition ${
-                    item.is_read
-                      ? "border-white/10 bg-white/5 hover:bg-white/10"
-                      : "border-cyan-400/40 bg-cyan-500/10 hover:bg-cyan-500/15"
-                  }`}
-                >
-                  <div className="text-base font-semibold text-white">
-                    {item.title || "Notification"}
-                  </div>
+              items.map((item) => {
+                const unreadItem = !item?.is_read && !item?.read;
 
-                  {item.message ? (
-                    <div className="mt-1 text-sm text-slate-300">
-                      {item.message}
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleItemClick(item)}
+                    className={`block w-full border-b border-slate-800 px-4 py-3 text-left transition hover:bg-slate-900 ${
+                      unreadItem ? "bg-slate-900/70" : "bg-transparent"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="mt-1 text-sm">
+                        {unreadItem ? "🟢" : "⚪"}
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-white">
+                          {item.title || "Notification"}
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-400">
+                          {item.message || "You have a new update."}
+                        </p>
+
+                        {item.createdAt || item.created_at ? (
+                          <p className="mt-2 text-[11px] text-slate-500">
+                            {item.createdAt || item.created_at}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
-                  ) : null}
-
-                  <div className="mt-2 text-xs text-slate-400">
-                    {item.created_at || ""}
-                  </div>
-                </button>
-              ))
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

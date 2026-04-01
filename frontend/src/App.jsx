@@ -6,7 +6,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 
-import MyBookings from "./pages/MyBookings.backup";
+ import MyBookings from "./pages/MyBookings";
 import MyQuotes from "./pages/MyQuotes";
 import LeaveReview from "./pages/LeaveReview";
 import Messages from "./pages/Messages";
@@ -17,6 +17,7 @@ import ProviderQuotes from "./pages/ProviderQuotes";
 
 import RequireAdmin from "./components/RequireAdmin";
 import AdminUsers from "./pages/AdminUsers";
+
 
 import PayVerify from "./pages/PayVerify";
 import ProviderProfile from "./pages/ProviderProfile";
@@ -29,6 +30,7 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="login" element={<Login />} />
         <Route path="register" element={<Register />} />
+         
 
         {/* customer */}
         <Route path="my-bookings" element={<MyBookings />} />
