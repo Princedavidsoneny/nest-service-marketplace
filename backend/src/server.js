@@ -131,6 +131,9 @@ try { db.prepare("ALTER TABLE notifications ADD COLUMN message TEXT").run(); } c
 try { db.prepare("ALTER TABLE notifications ADD COLUMN type TEXT").run(); } catch {}
 try { db.prepare("ALTER TABLE notifications ADD COLUMN ref_id INTEGER").run(); } catch {}
 
+try { db.prepare("ALTER TABLE users ADD COLUMN bio TEXT").run(); } catch {}
+try { db.prepare("ALTER TABLE users ADD COLUMN profile_image TEXT").run(); } catch {}
+
 try {
   const notificationCols = db.prepare("PRAGMA table_info(notifications);").all();
   const hasBody = notificationCols.some((c) => c.name === "body");
@@ -149,9 +152,7 @@ try {
     SET body = COALESCE(body, ''),
         message = COALESCE(message, body, '')
   `).run();
-} catch (e) {
-  console.log("⚠️ notifications migration warning:", e.message);
-}
+} catch {}
 
 // -------------------- auth helpers --------------------
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
@@ -222,6 +223,13 @@ function normalizeServiceId(input) {
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
+function normalizeImageUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (!/^https?:\/\//i.test(text)) return null;
+  return text;
+}
+
 // -------------------- routes --------------------
 app.get("/health", (req, res) => {
   res.json({ ok: true });
@@ -271,12 +279,87 @@ app.post("/auth/login", (req, res) => {
     const ok = bcrypt.compareSync(password, user.password_hash);
     if (!ok) return res.status(400).json({ error: "Invalid login" });
 
-    const safeUser = { id: user.id, name: user.name, email: user.email, role: user.role };
+    const safeUser = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      bio: user.bio || "",
+      profileImage: user.profile_image || "",
+    };
+
     const token = signToken(safeUser);
 
     return res.json({ user: safeUser, token });
   } catch (e) {
     return res.status(500).json({ error: e.message || "Server error" });
+  }
+});
+
+// ---------- PROVIDER PROFILE SETTINGS ----------
+app.get("/providers/me", authRequired, requireRole("provider"), (req, res) => {
+  try {
+    const provider = db.prepare(`
+      SELECT
+        id,
+        name,
+        email,
+        role,
+        bio,
+        profile_image AS profileImage,
+        created_at AS createdAt
+      FROM users
+      WHERE id = ? AND role = 'provider'
+    `).get(req.user.id);
+
+    if (!provider) {
+      return res.status(404).json({ error: "Provider not found" });
+    }
+
+    return res.json(provider);
+  } catch (e) {
+    return res.status(500).json({ error: e.message || "Failed to load provider profile" });
+  }
+});
+
+app.patch("/providers/me", authRequired, requireRole("provider"), (req, res) => {
+  try {
+    const { name, bio, profileImage } = req.body || {};
+
+    const safeName = String(name || "").trim();
+    const safeBio = String(bio || "").trim();
+    const safeProfileImage = profileImage ? normalizeImageUrl(profileImage) : null;
+
+    if (!safeName) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+
+    if (profileImage && !safeProfileImage) {
+      return res.status(400).json({ error: "Profile image must be a valid http or https URL" });
+    }
+
+    db.prepare(`
+      UPDATE users
+      SET name = ?, bio = ?, profile_image = ?
+      WHERE id = ? AND role = 'provider'
+    `).run(safeName, safeBio || null, safeProfileImage, req.user.id);
+
+    const updated = db.prepare(`
+      SELECT
+        id,
+        name,
+        email,
+        role,
+        bio,
+        profile_image AS profileImage,
+        created_at AS createdAt
+      FROM users
+      WHERE id = ?
+    `).get(req.user.id);
+
+    return res.json(updated);
+  } catch (e) {
+    return res.status(500).json({ error: e.message || "Failed to update provider profile" });
   }
 });
 
@@ -314,6 +397,7 @@ app.get("/services", (req, res) => {
         s.price_from AS priceFrom,
         s.user_id AS providerId,
         u.name AS providerName,
+        u.profile_image AS providerProfileImage,
         s.created_at AS createdAt,
         COALESCE((
           SELECT ROUND(AVG(r.rating), 1)
@@ -585,7 +669,7 @@ app.post("/quotes", authRequired, requireRole("customer"), (req, res) => {
   }
 });
 
-  app.get("/quotes/my", authRequired, requireRole("customer"), (req, res) => {
+app.get("/quotes/my", authRequired, requireRole("customer"), (req, res) => {
   try {
     const rows = db.prepare(`
       SELECT
@@ -766,7 +850,7 @@ app.post("/offers/:id/accept", authRequired, requireRole("customer"), (req, res)
 });
 
 // ---------- PAYMENTS ----------
- app.post("/payments/init", authRequired, async (req, res) => {
+app.post("/payments/init", authRequired, async (req, res) => {
   try {
     const bookingId = Number(req.body.bookingId || req.body.booking_id);
     if (!bookingId) return res.status(400).json({ error: "bookingId required" });
@@ -802,8 +886,8 @@ app.post("/offers/:id/accept", authRequired, requireRole("customer"), (req, res)
     const callbackUrl = `${appUrl}/pay/verify?reference=${reference}`;
 
     if (!req.user.email || !String(req.user.email).includes("@")) {
-  return res.status(400).json({ error: "Customer email is invalid" });
-}
+      return res.status(400).json({ error: "Customer email is invalid" });
+    }
 
     const response = await axios.post(
       "https://api.paystack.co/transaction/initialize",
@@ -818,8 +902,6 @@ app.post("/offers/:id/accept", authRequired, requireRole("customer"), (req, res)
         headers: { Authorization: `Bearer ${secret}` },
       }
     );
-
-    
 
     return res.json({
       reference,
@@ -1075,7 +1157,14 @@ app.get("/providers/:id", (req, res) => {
     if (!providerId) return res.status(400).json({ error: "Invalid provider id" });
 
     const provider = db.prepare(`
-      SELECT id, name, email, role, created_at
+      SELECT
+        id,
+        name,
+        email,
+        role,
+        bio,
+        profile_image AS profileImage,
+        created_at AS createdAt
       FROM users
       WHERE id = ? AND role = 'provider'
     `).get(providerId);
@@ -1172,9 +1261,6 @@ app.patch("/notifications/read-all", authRequired, (req, res) => {
     return res.status(500).json({ error: e.message || "Failed to mark all as read" });
   }
 });
-
-// ---------- DEBUG ----------
- 
 
 // ---------- START ----------
 const PORT = process.env.PORT || 5000;

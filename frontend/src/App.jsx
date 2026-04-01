@@ -17,6 +17,7 @@ import ProviderQuotes from "./pages/ProviderQuotes";
 
 import RequireAdmin from "./components/RequireAdmin";
 import AdminUsers from "./pages/AdminUsers";
+import ProviderSettings from "./pages/ProviderSettings";
 
 
 import PayVerify from "./pages/PayVerify";
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="provider/bookings" element={<ProviderBookings />} />
         <Route path="provider/quotes" element={<ProviderQuotes />} />
         <Route path="/provider/:id" element={<ProviderProfile />} />
+        <Route path="/provider-settings" element={<ProviderSettings />} />
 
         {/* admin */}
         <Route

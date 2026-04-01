@@ -245,9 +245,20 @@ export default function ProviderProfile() {
             <div>
               <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
                 <div className="flex items-center gap-4">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 text-2xl font-black text-slate-950">
-                    {getInitials(provider.name)}
-                  </div>
+                  {provider.profileImage ? (
+                    <img
+                      src={provider.profileImage}
+                      alt={provider.name || "Provider"}
+                      className="h-20 w-20 rounded-full object-cover ring-4 ring-cyan-500/20"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 text-2xl font-black text-slate-950">
+                      {getInitials(provider.name)}
+                    </div>
+                  )}
 
                   <div>
                     <h1 className="text-2xl font-extrabold text-white">
@@ -309,10 +320,8 @@ export default function ProviderProfile() {
                   About this provider
                 </h2>
                 <p className="mt-3 max-w-3xl text-slate-300">
-                  Browse this provider’s active services, choose the one you need,
-                  and then either book instantly or request a quote. This page uses
-                  a polished avatar layout for now, which is the safest deployment
-                  option before adding real image uploads.
+                  {provider.bio ||
+                    "Browse this provider’s active services, choose the one you need, and then either book instantly or request a quote."}
                 </p>
 
                 <div className="mt-6 flex flex-wrap gap-3">

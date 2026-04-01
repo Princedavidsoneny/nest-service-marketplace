@@ -212,3 +212,17 @@ export async function fetchServiceReviewSummary(serviceId) {
 export async function fetchProviderProfile(providerId) {
   return request(`/providers/${providerId}`);
 }
+
+export async function fetchMyProviderProfile() {
+  return request("/providers/me", {
+    headers: { ...authHeader() },
+  });
+}
+
+export async function updateMyProviderProfile(payload) {
+  return request("/providers/me", {
+    method: "PATCH",
+    headers: { ...authHeader() },
+    body: JSON.stringify(payload),
+  });
+}
