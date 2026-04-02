@@ -5,13 +5,26 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Database from "better-sqlite3";
 import axios from "axios";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 import messagesRouter from "./routes/messages.js";
 
 const app = express();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(__dirname, "uploads");
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 app.use(cors({ origin: true }));
 app.use(express.json());
 app.use("/messages", messagesRouter);
+app.use("/uploads", express.static(uploadsDir));
 
 const db = new Database("database.sqlite");
 db.exec(`PRAGMA foreign_keys = ON;`);
@@ -122,6 +135,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 `);
 
+// -------------------- safe migrations --------------------
 try { db.prepare("ALTER TABLE bookings ADD COLUMN quote_id INTEGER").run(); } catch {}
 try { db.prepare("ALTER TABLE bookings ADD COLUMN amount INTEGER").run(); } catch {}
 try { db.prepare("ALTER TABLE bookings ADD COLUMN source TEXT DEFAULT 'booking'").run(); } catch {}
@@ -153,6 +167,35 @@ try {
         message = COALESCE(message, body, '')
   `).run();
 } catch {}
+
+// -------------------- upload config --------------------
+const storage = multer.diskStorage({
+  destination: function (_req, _file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (_req, file, cb) {
+    const safeOriginal = String(file.originalname || "image")
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9._-]/g, "");
+
+    const uniqueName = `${Date.now()}-${safeOriginal}`;
+    cb(null, uniqueName);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: function (_req, file, cb) {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
+    if (!allowed.includes(file.mimetype)) {
+      return cb(new Error("Only JPG, JPEG, PNG, and WEBP images are allowed"));
+    }
+    cb(null, true);
+  },
+});
 
 // -------------------- auth helpers --------------------
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
@@ -223,15 +266,31 @@ function normalizeServiceId(input) {
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
-function normalizeImageUrl(value) {
+function normalizeProfileImage(value) {
   const text = String(value || "").trim();
   if (!text) return null;
-  if (!/^https?:\/\//i.test(text)) return null;
-  return text;
+
+  if (/^https?:\/\//i.test(text)) return text;
+  if (text.startsWith("/uploads/")) return text;
+
+  return null;
+}
+
+function publicImageUrl(req, value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+
+  if (/^https?:\/\//i.test(text)) return text;
+
+  if (text.startsWith("/uploads/")) {
+    return `${req.protocol}://${req.get("host")}${text}`;
+  }
+
+  return "";
 }
 
 // -------------------- routes --------------------
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
@@ -296,6 +355,31 @@ app.post("/auth/login", (req, res) => {
   }
 });
 
+// ---------- UPLOAD ----------
+app.post("/upload/profile-image", authRequired, requireRole("provider"), (req, res) => {
+  upload.single("image")(req, res, (err) => {
+    try {
+      if (err) {
+        return res.status(400).json({ error: err.message || "Upload failed" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const storedPath = `/uploads/${req.file.filename}`;
+
+      return res.json({
+        success: true,
+        imagePath: storedPath,
+        imageUrl: `${req.protocol}://${req.get("host")}${storedPath}`,
+      });
+    } catch {
+      return res.status(500).json({ error: "Upload failed" });
+    }
+  });
+});
+
 // ---------- PROVIDER PROFILE SETTINGS ----------
 app.get("/providers/me", authRequired, requireRole("provider"), (req, res) => {
   try {
@@ -306,7 +390,7 @@ app.get("/providers/me", authRequired, requireRole("provider"), (req, res) => {
         email,
         role,
         bio,
-        profile_image AS profileImage,
+        profile_image,
         created_at AS createdAt
       FROM users
       WHERE id = ? AND role = 'provider'
@@ -316,7 +400,15 @@ app.get("/providers/me", authRequired, requireRole("provider"), (req, res) => {
       return res.status(404).json({ error: "Provider not found" });
     }
 
-    return res.json(provider);
+    return res.json({
+      id: provider.id,
+      name: provider.name,
+      email: provider.email,
+      role: provider.role,
+      bio: provider.bio || "",
+      profileImage: publicImageUrl(req, provider.profile_image),
+      createdAt: provider.createdAt,
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message || "Failed to load provider profile" });
   }
@@ -328,21 +420,28 @@ app.patch("/providers/me", authRequired, requireRole("provider"), (req, res) => 
 
     const safeName = String(name || "").trim();
     const safeBio = String(bio || "").trim();
-    const safeProfileImage = profileImage ? normalizeImageUrl(profileImage) : null;
+    const safeProfileImage = normalizeProfileImage(profileImage);
 
     if (!safeName) {
       return res.status(400).json({ error: "Name is required" });
     }
 
     if (profileImage && !safeProfileImage) {
-      return res.status(400).json({ error: "Profile image must be a valid http or https URL" });
+      return res.status(400).json({
+        error: "Profile image must be a valid http/https URL or uploaded image path",
+      });
     }
 
     db.prepare(`
       UPDATE users
       SET name = ?, bio = ?, profile_image = ?
       WHERE id = ? AND role = 'provider'
-    `).run(safeName, safeBio || null, safeProfileImage, req.user.id);
+    `).run(
+      safeName,
+      safeBio || null,
+      safeProfileImage || null,
+      req.user.id
+    );
 
     const updated = db.prepare(`
       SELECT
@@ -351,13 +450,21 @@ app.patch("/providers/me", authRequired, requireRole("provider"), (req, res) => 
         email,
         role,
         bio,
-        profile_image AS profileImage,
+        profile_image,
         created_at AS createdAt
       FROM users
       WHERE id = ?
     `).get(req.user.id);
 
-    return res.json(updated);
+    return res.json({
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      role: updated.role,
+      bio: updated.bio || "",
+      profileImage: publicImageUrl(req, updated.profile_image),
+      createdAt: updated.createdAt,
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message || "Failed to update provider profile" });
   }
@@ -603,9 +710,11 @@ app.patch("/bookings/:id/status", authRequired, requireRole("provider"), (req, r
     if (status === "accepted" && current.status !== "pending") {
       return res.status(400).json({ error: "Only pending bookings can be accepted" });
     }
+
     if (status === "rejected" && current.status !== "pending") {
       return res.status(400).json({ error: "Only pending bookings can be rejected" });
     }
+
     if (status === "completed" && current.status !== "accepted") {
       return res.status(400).json({ error: "Only accepted bookings can be completed" });
     }
@@ -1163,7 +1272,7 @@ app.get("/providers/:id", (req, res) => {
         email,
         role,
         bio,
-        profile_image AS profileImage,
+        profile_image,
         created_at AS createdAt
       FROM users
       WHERE id = ? AND role = 'provider'
@@ -1180,7 +1289,13 @@ app.get("/providers/:id", (req, res) => {
     `).get(providerId);
 
     return res.json({
-      ...provider,
+      id: provider.id,
+      name: provider.name,
+      email: provider.email,
+      role: provider.role,
+      bio: provider.bio || "",
+      profileImage: publicImageUrl(req, provider.profile_image),
+      createdAt: provider.createdAt,
       reviewCount: Number(stats?.reviewCount || 0),
       avgRating: Number(stats?.avgRating || 0),
     });

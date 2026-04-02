@@ -22,7 +22,9 @@ async function request(path, options = {}) {
     ...options,
     headers: {
       Accept: "application/json",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.body && !(options.body instanceof FormData)
+        ? { "Content-Type": "application/json" }
+        : {}),
       ...(options.headers || {}),
     },
   });
@@ -224,5 +226,16 @@ export async function updateMyProviderProfile(payload) {
     method: "PATCH",
     headers: { ...authHeader() },
     body: JSON.stringify(payload),
+  });
+}
+
+export async function uploadProviderProfileImage(file) {
+  const formData = new FormData();
+  formData.append("image", file);
+
+  return request("/upload/profile-image", {
+    method: "POST",
+    headers: { ...authHeader() },
+    body: formData,
   });
 }
