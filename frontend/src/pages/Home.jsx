@@ -1,6 +1,7 @@
  import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createBooking, createQuote, fetchServices } from "../services";
+import { getUser } from "../auth";
 import {
   dedupeCities,
   formatCategory,
@@ -11,12 +12,14 @@ import {
 
 function dedupeById(list = []) {
   const map = new Map();
+
   for (const item of list) {
     if (!item || item.id == null) continue;
     if (!map.has(item.id)) {
       map.set(item.id, item);
     }
   }
+
   return Array.from(map.values());
 }
 
@@ -64,6 +67,7 @@ function friendlyErrorMessage(error, mode = "booking") {
 
 export default function Home() {
   const nav = useNavigate();
+  const user = getUser();
 
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -78,7 +82,7 @@ export default function Home() {
   const [toast, setToast] = useState("");
 
   const [openModal, setOpenModal] = useState(false);
-  const [mode, setMode] = useState("booking"); // booking | quote
+  const [mode, setMode] = useState("booking");
   const [selected, setSelected] = useState(null);
 
   const [bookingDate, setBookingDate] = useState("");
@@ -87,20 +91,22 @@ export default function Home() {
   const [quoteDetails, setQuoteDetails] = useState("");
   const [quoteBudget, setQuoteBudget] = useState("");
 
-  async function loadServices() {
+  async function loadServices(filters = null) {
     try {
       setLoading(true);
       setErr("");
 
-      const data = await fetchServices({
+      const activeFilters = filters || {
         q: q || undefined,
         category: category || undefined,
         city: city || undefined,
-      });
+      };
 
+      const data = await fetchServices(activeFilters);
       const clean = dedupeById(Array.isArray(data) ? data : []);
+
       setServices(clean);
-    } catch  {
+    } catch {
       setErr("Failed to load services.");
       setServices([]);
     } finally {
@@ -113,14 +119,22 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 2500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const categories = useMemo(() => {
     const set = new Set();
+
     services.forEach((s) => {
       const value = String(s?.category || "").trim();
       if (value && value.toLowerCase() !== "general") {
         set.add(value);
       }
     });
+
     return Array.from(set);
   }, [services]);
 
@@ -144,28 +158,45 @@ export default function Home() {
     setErr("");
     setMsg("");
 
-    setTimeout(() => {
-      loadServices();
-    }, 0);
+    loadServices({
+      q: undefined,
+      category: undefined,
+      city: undefined,
+    });
   }
 
-  function closeModal() {
-    if (saving) return;
-
-    setOpenModal(false);
+  function clearModalState() {
     setSelected(null);
     setMode("booking");
-
     setBookingDate("");
     setBookingNote("");
     setQuoteDetails("");
     setQuoteBudget("");
-
     setErr("");
     setMsg("");
   }
 
+  function closeModal() {
+    if (saving) return;
+    setOpenModal(false);
+    clearModalState();
+  }
+
+  function ensureLoggedIn() {
+    if (!user) {
+      setToast("Please log in to continue.");
+      setTimeout(() => {
+        nav("/login");
+      }, 700);
+      return false;
+    }
+
+    return true;
+  }
+
   function openBooking(service) {
+    if (!ensureLoggedIn()) return;
+
     setSelected(service);
     setMode("booking");
     setBookingDate("");
@@ -176,6 +207,8 @@ export default function Home() {
   }
 
   function openQuote(service) {
+    if (!ensureLoggedIn()) return;
+
     setSelected(service);
     setMode("quote");
     setQuoteDetails("");
@@ -226,14 +259,10 @@ export default function Home() {
       }
 
       setTimeout(() => {
-        setToast("");
-      }, 2500);
-
-      setTimeout(() => {
         closeModal();
-      }, 900);
-    } catch (e) {
-      setErr(friendlyErrorMessage(e, mode));
+      }, 800);
+    } catch (e2) {
+      setErr(friendlyErrorMessage(e2, mode));
     } finally {
       setSaving(false);
     }
@@ -254,9 +283,7 @@ export default function Home() {
           </h1>
 
           <p className="mt-4 max-w-3xl text-base text-slate-300 md:text-xl">
-            Discover reliable plumbers, electricians, cleaners, mechanics and
-            other professionals near you. Compare services, request quotes, and
-            book with confidence.
+            Discover reliable plumbers, electricians, cleaners, mechanics and other professionals near you. Compare services, request quotes, and book with confidence.
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
@@ -386,8 +413,11 @@ export default function Home() {
             Loading services...
           </div>
         ) : services.length === 0 ? (
-          <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-6 text-slate-300">
-            No services found.
+          <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-300">
+            <div className="text-lg font-semibold text-white">No services found</div>
+            <p className="mt-2 text-sm text-slate-400">
+              Try changing your filters or resetting the search.
+            </p>
           </div>
         ) : (
           <div className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
@@ -417,6 +447,10 @@ export default function Home() {
                       <div className="mt-1 text-sm text-slate-400">
                         {formatCategory(s.category)} • {formatCity(s.city)}
                       </div>
+
+                      <div className="mt-1 text-xs text-slate-500">
+                        Provider: {s.providerName || "Local professional"}
+                      </div>
                     </div>
 
                     <div className="rounded-full bg-cyan-500/15 px-3 py-1 text-sm font-semibold text-cyan-300">
@@ -427,6 +461,16 @@ export default function Home() {
                   <p className="min-h-[48px] text-sm text-slate-300">
                     {s.description || "Professional local service available."}
                   </p>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                      Rating: {Number(s.avgRating || 0) > 0 ? `${s.avgRating}★` : "New"}
+                    </span>
+
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                      Reviews: {Number(s.reviewCount || 0)}
+                    </span>
+                  </div>
 
                   <div className="mt-5 flex flex-wrap gap-3">
                     <button

@@ -7,17 +7,56 @@ import {
   markNotificationRead,
 } from "../api/notifications";
 
-function notificationTarget(item) {
-  const type = String(item?.type || "").toLowerCase();
+function isUnread(item) {
+  return Number(item?.isRead ?? item?.is_read ?? item?.read ?? 0) !== 1;
+}
 
-  if (type.includes("quote")) return "/my-quotes";
-  if (type.includes("booking")) return "/my-bookings";
-  if (type.includes("provider")) return "/provider-bookings";
+function formatWhen(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+ function notificationTarget(item) {
+  const type = String(item?.type || "").toLowerCase();
+  const refId = item?.refId ?? item?.ref_id ?? null;
+
+  if (type.includes("quote_offer") || type.includes("quote")) {
+    return "/my-quotes";
+  }
+
+  if (type.includes("quote_request")) {
+    return "/provider/quotes";
+  }
+
+  if (type.includes("booking_status")) {
+    return "/my-bookings";
+  }
+
+  if (type === "booking") {
+    return "/provider/bookings";
+  }
+
+  if (type.includes("provider")) {
+    return "/provider/bookings";
+  }
+
+  if (refId && type.includes("message")) {
+    return `/messages/${refId}`;
+  }
 
   return null;
 }
 
-export default function NotificationsBell() {
+export default function NotificationBell() {
   const navigate = useNavigate();
   const boxRef = useRef(null);
 
@@ -54,8 +93,7 @@ export default function NotificationsBell() {
     setOpen(next);
 
     if (next) {
-      await loadItems();
-      await loadCount();
+      await Promise.all([loadItems(), loadCount()]);
     }
   }
 
@@ -67,6 +105,7 @@ export default function NotificationsBell() {
       setItems((prev) =>
         prev.map((item) => ({
           ...item,
+          isRead: 1,
           is_read: 1,
           read: 1,
         }))
@@ -78,14 +117,14 @@ export default function NotificationsBell() {
 
   async function handleItemClick(item) {
     try {
-      const unreadItem = !item?.is_read && !item?.read;
-
-      if (unreadItem) {
+      if (isUnread(item)) {
         await markNotificationRead(item.id);
 
         setItems((prev) =>
           prev.map((n) =>
-            n.id === item.id ? { ...n, is_read: 1, read: 1 } : n
+            n.id === item.id
+              ? { ...n, isRead: 1, is_read: 1, read: 1 }
+              : n
           )
         );
 
@@ -125,7 +164,7 @@ export default function NotificationsBell() {
       <button
         type="button"
         onClick={handleOpen}
-        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white hover:bg-slate-800"
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition hover:bg-slate-800"
         aria-label="Notifications"
       >
         <span className="text-lg">🔔</span>
@@ -145,7 +184,7 @@ export default function NotificationsBell() {
             <button
               type="button"
               onClick={handleMarkAllRead}
-              className="text-xs font-medium text-cyan-400 hover:text-cyan-300"
+              className="text-xs font-medium text-cyan-400 transition hover:text-cyan-300"
             >
               Mark all read
             </button>
@@ -160,7 +199,7 @@ export default function NotificationsBell() {
               </div>
             ) : (
               items.map((item) => {
-                const unreadItem = !item?.is_read && !item?.read;
+                const unreadItem = isUnread(item);
 
                 return (
                   <button
@@ -187,7 +226,7 @@ export default function NotificationsBell() {
 
                         {item.createdAt || item.created_at ? (
                           <p className="mt-2 text-[11px] text-slate-500">
-                            {item.createdAt || item.created_at}
+                            {formatWhen(item.createdAt || item.created_at)}
                           </p>
                         ) : null}
                       </div>

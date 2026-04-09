@@ -24,7 +24,12 @@ function friendlyError(error) {
     return "Provider name is required.";
   }
 
-  if (raw.includes("only jpg") || raw.includes("png") || raw.includes("webp")) {
+  if (
+    raw.includes("only jpg") ||
+    raw.includes("jpeg") ||
+    raw.includes("png") ||
+    raw.includes("webp")
+  ) {
     return "Only JPG, JPEG, PNG, and WEBP images are allowed.";
   }
 
@@ -92,6 +97,12 @@ export default function ProviderSettings() {
     load();
   }, []);
 
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(""), 2500);
+    return () => clearTimeout(t);
+  }, [msg]);
+
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
     if (key === "profileImage") {
@@ -110,13 +121,14 @@ export default function ProviderSettings() {
       setImageBroken(false);
 
       const res = await uploadProviderProfileImage(file);
+      updateField("profileImage", res?.imageUrl || res?.imagePath || "");
 
-      updateField("profileImage", res?.imageUrl || "");
       setMsg("Image uploaded successfully. Click save to keep it on your profile.");
     } catch (e2) {
       setErr(friendlyError(e2));
     } finally {
       setUploading(false);
+      e.target.value = "";
     }
   }
 
@@ -140,7 +152,11 @@ export default function ProviderSettings() {
         return;
       }
 
-      if (payload.profileImage && !payload.profileImage.startsWith("/uploads/") && !isValidUrl(payload.profileImage)) {
+      if (
+        payload.profileImage &&
+        !payload.profileImage.startsWith("/uploads/") &&
+        !isValidUrl(payload.profileImage)
+      ) {
         setErr("Please use a valid image URL or upload an image from your device.");
         return;
       }
@@ -154,7 +170,11 @@ export default function ProviderSettings() {
     }
   }
 
-  const previewName = useMemo(() => form.name.trim() || "Provider name", [form.name]);
+  const previewName = useMemo(
+    () => form.name.trim() || "Provider name",
+    [form.name]
+  );
+
   const previewBio = useMemo(
     () =>
       form.bio.trim() ||
@@ -177,7 +197,7 @@ export default function ProviderSettings() {
 
           <div className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-xl">
             <div className="text-sm text-slate-300">
-              You can either upload a real image from your device or paste a direct public image URL.
+              You can either upload an image from your device or paste a direct public image URL.
             </div>
           </div>
         </div>
@@ -196,7 +216,9 @@ export default function ProviderSettings() {
 
               <div className="mt-5 space-y-4">
                 <div>
-                  <label className="mb-2 block text-sm text-slate-300">Provider name</label>
+                  <label className="mb-2 block text-sm text-slate-300">
+                    Provider name
+                  </label>
                   <input
                     value={form.name}
                     onChange={(e) => updateField("name", e.target.value)}
@@ -206,7 +228,9 @@ export default function ProviderSettings() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm text-slate-300">Upload profile image</label>
+                  <label className="mb-2 block text-sm text-slate-300">
+                    Upload profile image
+                  </label>
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/jpg,image/webp"
@@ -219,7 +243,9 @@ export default function ProviderSettings() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm text-slate-300">Or profile image URL</label>
+                  <label className="mb-2 block text-sm text-slate-300">
+                    Or profile image URL
+                  </label>
                   <input
                     value={form.profileImage}
                     onChange={(e) => updateField("profileImage", e.target.value)}

@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  customer
+  provider
+  admin
+}
+
+enum BookingStatus {
+  pending
+  accepted
+  rejected
+  completed
+}
+
+enum QuoteStatus {
+  pending
+  offered
+  accepted
+  rejected
+}
+
+enum OfferStatus {
+  offered
+  accepted
+  rejected
+}
+
+enum PaymentStatus {
+  initialized
+  success
+  failed
+}
+
+model User {
+  id             Int            @id @default(autoincrement())
+  name           String
+  email          String         @unique
+  passwordHash   String         @map("password_hash")
+  role           Role           @default(customer)
+  bio            String?
+  profileImage   String?        @map("profile_image")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  services       Service[]
+  customerBookings Booking[]    @relation("CustomerBookings")
+  customerQuotes   Quote[]      @relation("CustomerQuotes")
+  providerQuotes   Quote[]      @relation("ProviderQuotes")
+  quoteOffers      QuoteOffer[]
+  sentMessages     Message[]    @relation("SentMessages")
+  receivedMessages Message[]    @relation("ReceivedMessages")
+  customerReviews  Review[]     @relation("CustomerReviews")
+  providerReviews  Review[]     @relation("ProviderReviews")
+  payments         Payment[]
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model Service {
+  id           Int        @id @default(autoincrement())
+  userId       Int        @map("user_id")
+  title        String
+  category     String
+  description  String
+  city         String?
+  priceFrom    Int?       @map("price_from")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  provider     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings     Booking[]
+  quotes       Quote[]
+
+  @@map("services")
+}
+
+model Booking {
+  id           Int           @id @default(autoincrement())
+  customerId   Int           @map("customer_id")
+  serviceId    Int           @map("service_id")
+  date         DateTime?
+  note         String?
+  status       BookingStatus @default(pending)
+  quoteId      Int?          @map("quote_id")
+  amount       Int?
+  source       String        @default("booking")
+  paid         Boolean       @default(false)
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  customer     User          @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  quote        Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  messages     Message[]
+  review       Review?
+  payment      Payment?
+
+  @@map("bookings")
+}
+
+model Quote {
+  id           Int           @id @default(autoincrement())
+  serviceId    Int           @map("service_id")
+  customerId   Int           @map("customer_id")
+  providerId   Int           @map("provider_id")
+  details      String
+  status       QuoteStatus   @default(pending)
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  customer     User          @relation("CustomerQuotes", fields: [customerId], references: [id], onDelete: Cascade)
+  provider     User          @relation("ProviderQuotes", fields: [providerId], references: [id], onDelete: Cascade)
+  offers       QuoteOffer[]
+  bookings     Booking[]
+
+  @@map("quotes")
+}
+
+model QuoteOffer {
+  id           Int         @id @default(autoincrement())
+  quoteId       Int        @map("quote_id")
+  providerId    Int        @map("provider_id")
+  amount        Int
+  message       String?
+  status        OfferStatus @default(offered)
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  quote         Quote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  provider      User       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@map("quote_offers")
+}
+
+model Message {
+  id           Int        @id @default(autoincrement())
+  bookingId    Int        @map("booking_id")
+  senderId     Int        @map("sender_id")
+  receiverId   Int        @map("receiver_id")
+  body         String
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  booking      Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  sender       User       @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver     User       @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model Review {
+  id           Int        @id @default(autoincrement())
+  bookingId     Int       @unique @map("booking_id")
+  providerId    Int       @map("provider_id")
+  customerId    Int       @map("customer_id")
+  rating        Int
+  comment       String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  booking       Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  provider      User      @relation("ProviderReviews", fields: [providerId], references: [id], onDelete: Cascade)
+  customer      User      @relation("CustomerReviews", fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+}
+
+model Payment {
+  id           Int           @id @default(autoincrement())
+  bookingId     Int          @unique @map("booking_id")
+  customerId    Int          @map("customer_id")
+  amount        Int
+  currency      String       @default("NGN")
+  reference     String       @unique
+  status        PaymentStatus @default(initialized)
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  booking       Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  customer      User         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Notification {
+  id           Int        @id @default(autoincrement())
+  userId       Int        @map("user_id")
+  title        String
+  body         String?
+  message      String?
+  type         String?
+  refId        Int?       @map("ref_id")
+  isRead       Boolean    @default(false) @map("is_read")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}

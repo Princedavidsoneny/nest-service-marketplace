@@ -66,9 +66,18 @@ function formatReviewDate(value) {
   }).format(date);
 }
 
+function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    return null;
+  }
+}
+
 export default function ProviderProfile() {
   const { id } = useParams();
   const nav = useNavigate();
+  const user = getStoredUser();
 
   const [provider, setProvider] = useState(null);
   const [services, setServices] = useState([]);
@@ -161,6 +170,12 @@ export default function ProviderProfile() {
     if (id) load();
   }, [id]);
 
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(""), 2500);
+    return () => clearTimeout(t);
+  }, [msg]);
+
   const selectedService = useMemo(() => {
     return services.find((s) => String(s.id) === String(selectedServiceId)) || null;
   }, [services, selectedServiceId]);
@@ -172,8 +187,17 @@ export default function ProviderProfile() {
 
   const providerImage = provider?.profileImage || "";
 
+  function requireLoginMessage() {
+    if (!user) {
+      setErr("Please log in first to continue.");
+      return false;
+    }
+    return true;
+  }
+
   async function handleBooking() {
     if (!selectedService) return;
+    if (!requireLoginMessage()) return;
 
     try {
       setSavingBooking(true);
@@ -198,6 +222,7 @@ export default function ProviderProfile() {
 
   async function handleQuote() {
     if (!selectedService) return;
+    if (!requireLoginMessage()) return;
 
     try {
       setSavingQuote(true);
@@ -438,6 +463,12 @@ export default function ProviderProfile() {
                     <p>Starting Price: {formatPrice(selectedService.priceFrom)}</p>
                   </div>
 
+                  {!user ? (
+                    <div className="mt-6 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                      Please log in to book this service or request a quote.
+                    </div>
+                  ) : null}
+
                   <div className="mt-6 grid gap-5 lg:grid-cols-2">
                     <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-5">
                       <h3 className="text-xl font-semibold text-white">Book Service</h3>
@@ -460,7 +491,7 @@ export default function ProviderProfile() {
                       <button
                         type="button"
                         onClick={handleBooking}
-                        disabled={savingBooking}
+                        disabled={savingBooking || !user}
                         className="mt-4 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 px-5 py-3 font-semibold text-slate-950 disabled:opacity-60"
                       >
                         {savingBooking ? "Booking..." : "Book Service"}
@@ -489,7 +520,7 @@ export default function ProviderProfile() {
                       <button
                         type="button"
                         onClick={handleQuote}
-                        disabled={savingQuote}
+                        disabled={savingQuote || !user}
                         className="mt-4 w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-semibold text-white disabled:opacity-60"
                       >
                         {savingQuote ? "Sending..." : "Request Quote"}
@@ -517,10 +548,10 @@ export default function ProviderProfile() {
                   className="rounded-2xl border border-white/10 bg-white/5 p-4"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-white font-semibold">
+                    <div className="font-semibold text-white">
                       {r.customer_name || r.customerName || "Customer"}
                     </div>
-                    <div className="text-cyan-300 font-semibold">{r.rating}/5</div>
+                    <div className="font-semibold text-cyan-300">{r.rating}/5</div>
                   </div>
 
                   {r.serviceTitle ? (

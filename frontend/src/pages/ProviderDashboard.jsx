@@ -25,12 +25,14 @@ function getServiceImage(service) {
 
 function dedupeById(list = []) {
   const map = new Map();
+
   for (const item of list) {
     if (!item || item.id == null) continue;
     if (!map.has(item.id)) {
       map.set(item.id, item);
     }
   }
+
   return Array.from(map.values());
 }
 
@@ -58,6 +60,17 @@ function friendlyErrorMessage(error) {
   }
 
   return "Something went wrong. Please try again.";
+}
+
+function normalizeService(service) {
+  return {
+    ...service,
+    title: service?.title || "Untitled service",
+    category: service?.category || "general",
+    city: service?.city || "N/A",
+    priceFrom: Number(service?.priceFrom || service?.price_from || 0) || 0,
+    description: service?.description || "No description provided.",
+  };
 }
 
 export default function ProviderDashboard() {
@@ -97,7 +110,7 @@ export default function ProviderDashboard() {
 
       const data = await fetchMyServices();
       const list = Array.isArray(data) ? data : data?.rows || [];
-      setServices(dedupeById(list));
+      setServices(dedupeById(list).map(normalizeService));
     } catch (e) {
       setErr(e?.message || "Failed to load your services");
       setServices([]);
@@ -109,6 +122,12 @@ export default function ProviderDashboard() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(""), 2500);
+    return () => clearTimeout(t);
+  }, [msg]);
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -122,8 +141,6 @@ export default function ProviderDashboard() {
       priceFrom: "",
       description: "",
     });
-    setErr("");
-    setMsg("");
   }
 
   async function handleSubmit(e) {
@@ -140,22 +157,22 @@ export default function ProviderDashboard() {
       const priceNumber = Number(form.priceFrom || 0);
 
       if (!title) {
-        setErr("Service title is required");
+        setErr("Service title is required.");
         return;
       }
 
       if (!category) {
-        setErr("Category is required");
+        setErr("Category is required.");
         return;
       }
 
       if (!description) {
-        setErr("Description is required");
+        setErr("Description is required.");
         return;
       }
 
       if (form.priceFrom && (!Number.isFinite(priceNumber) || priceNumber < 0)) {
-        setErr("Starting price must be a valid number");
+        setErr("Starting price must be a valid number.");
         return;
       }
 
@@ -181,9 +198,13 @@ export default function ProviderDashboard() {
 
   const stats = useMemo(() => {
     const total = services.length;
-    const withCity = services.filter((s) => s?.city).length;
-    const priced = services.filter((s) => Number(s?.priceFrom || s?.price_from || 0) > 0).length;
-    return { total, withCity, priced };
+    const withCity = services.filter((s) => s?.city && s.city !== "N/A").length;
+    const priced = services.filter((s) => Number(s?.priceFrom || 0) > 0).length;
+    const categories = new Set(
+      services.map((s) => String(s?.category || "").trim()).filter(Boolean)
+    ).size;
+
+    return { total, withCity, priced, categories };
   }, [services]);
 
   return (
@@ -195,24 +216,44 @@ export default function ProviderDashboard() {
               Provider Dashboard
             </h1>
             <p className="mt-3 max-w-2xl text-base text-slate-300 md:text-lg">
-              Create and manage your service listings, set your pricing, and make your
-              business attractive to customers searching for trusted local professionals.
+              Create and manage your service listings, set your pricing, and make your business visible to customers searching for trusted local professionals.
             </p>
 
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div className="text-xs uppercase tracking-wide text-slate-400">My services</div>
-                <div className="mt-1 text-2xl font-bold text-white">{stats.total}</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">
+                  My services
+                </div>
+                <div className="mt-1 text-2xl font-bold text-white">
+                  {stats.total}
+                </div>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div className="text-xs uppercase tracking-wide text-slate-400">With city</div>
-                <div className="mt-1 text-2xl font-bold text-white">{stats.withCity}</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">
+                  With city
+                </div>
+                <div className="mt-1 text-2xl font-bold text-white">
+                  {stats.withCity}
+                </div>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div className="text-xs uppercase tracking-wide text-slate-400">With price</div>
-                <div className="mt-1 text-2xl font-bold text-white">{stats.priced}</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">
+                  With price
+                </div>
+                <div className="mt-1 text-2xl font-bold text-white">
+                  {stats.priced}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-400">
+                  Categories
+                </div>
+                <div className="mt-1 text-2xl font-bold text-white">
+                  {stats.categories}
+                </div>
               </div>
             </div>
           </div>
@@ -234,13 +275,15 @@ export default function ProviderDashboard() {
             <div className="mb-5">
               <h2 className="text-2xl font-bold text-white">Create a Service</h2>
               <p className="mt-1 text-sm text-slate-400">
-                Add a professional service customers can book or request a quote for.
+                Add a service customers can book directly or request a quote for.
               </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm text-slate-300">Service title</label>
+                <label className="mb-2 block text-sm text-slate-300">
+                  Service title
+                </label>
                 <input
                   value={form.title}
                   onChange={(e) => updateField("title", e.target.value)}
@@ -250,7 +293,9 @@ export default function ProviderDashboard() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-slate-300">Category</label>
+                <label className="mb-2 block text-sm text-slate-300">
+                  Category
+                </label>
                 <select
                   value={form.category}
                   onChange={(e) => updateField("category", e.target.value)}
@@ -276,7 +321,9 @@ export default function ProviderDashboard() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-slate-300">Starting price (₦)</label>
+                <label className="mb-2 block text-sm text-slate-300">
+                  Starting price (₦)
+                </label>
                 <input
                   type="number"
                   min="0"
@@ -288,7 +335,9 @@ export default function ProviderDashboard() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-slate-300">Description</label>
+                <label className="mb-2 block text-sm text-slate-300">
+                  Description
+                </label>
                 <textarea
                   value={form.description}
                   onChange={(e) => updateField("description", e.target.value)}
@@ -343,7 +392,7 @@ export default function ProviderDashboard() {
               <button
                 type="button"
                 onClick={load}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
               >
                 Refresh
               </button>
@@ -354,8 +403,13 @@ export default function ProviderDashboard() {
                 Loading services...
               </div>
             ) : services.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-6 text-slate-300">
-                No services yet. Create your first service from the form.
+              <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-8 text-center text-slate-300">
+                <div className="text-lg font-semibold text-white">
+                  No services yet
+                </div>
+                <p className="mt-2 text-sm text-slate-400">
+                  Create your first service from the form and it will appear here.
+                </p>
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
@@ -380,17 +434,17 @@ export default function ProviderDashboard() {
                             {service.title}
                           </h3>
                           <div className="mt-1 text-sm text-slate-300">
-                            {(service.category || "General")} • {(service.city || "N/A")}
+                            {service.category} • {service.city}
                           </div>
                         </div>
 
                         <div className="rounded-full border border-white/10 bg-slate-950/80 px-3 py-1 text-sm font-semibold text-cyan-300">
-                          {money(service.priceFrom || service.price_from)}
+                          {money(service.priceFrom)}
                         </div>
                       </div>
 
                       <p className="mt-3 min-h-[48px] text-sm text-slate-300">
-                        {service.description || "No description provided."}
+                        {service.description}
                       </p>
 
                       <div className="mt-4 flex flex-wrap gap-2">
