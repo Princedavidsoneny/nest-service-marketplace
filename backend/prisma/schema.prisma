@@ -1,4 +1,4 @@
-generator client {
+ generator client {
   provider = "prisma-client-js"
 }
 
@@ -40,45 +40,68 @@ enum PaymentStatus {
 }
 
 model User {
-  id             Int            @id @default(autoincrement())
-  name           String
-  email          String         @unique
-  passwordHash   String         @map("password_hash")
-  role           Role           @default(customer)
-  bio            String?
-  profileImage   String?        @map("profile_image")
-  createdAt      DateTime       @default(now()) @map("created_at")
+  id                     Int            @id @default(autoincrement())
+  name                   String
+  email                  String         @unique
+  passwordHash           String         @map("password_hash")
+  role                   Role           @default(customer)
+  bio                    String?
+  profileImage           String?        @map("profile_image")
+  createdAt              DateTime       @default(now()) @map("created_at")
 
-  services       Service[]
-  customerBookings Booking[]    @relation("CustomerBookings")
-  customerQuotes   Quote[]      @relation("CustomerQuotes")
-  providerQuotes   Quote[]      @relation("ProviderQuotes")
-  quoteOffers      QuoteOffer[]
-  sentMessages     Message[]    @relation("SentMessages")
-  receivedMessages Message[]    @relation("ReceivedMessages")
-  customerReviews  Review[]     @relation("CustomerReviews")
-  providerReviews  Review[]     @relation("ProviderReviews")
-  payments         Payment[]
-  notifications    Notification[]
+  bankName               String?        @map("bank_name")
+  bankCode               String?        @map("bank_code")
+  accountNumber          String?        @map("account_number")
+  accountName            String?        @map("account_name")
+  payoutBusinessName     String?        @map("payout_business_name")
+  payoutVerified         Boolean        @default(false) @map("payout_verified")
+  paystackSubaccountCode String?        @map("paystack_subaccount_code")
+  platformSplitPercent   Float          @default(10) @map("platform_split_percent")
+
+  services               Service[]
+  customerBookings       Booking[]      @relation("CustomerBookings")
+  customerQuotes         Quote[]        @relation("CustomerQuotes")
+  providerQuotes         Quote[]        @relation("ProviderQuotes")
+  quoteOffers            QuoteOffer[]
+  sentMessages           Message[]      @relation("SentMessages")
+  receivedMessages       Message[]      @relation("ReceivedMessages")
+  customerReviews        Review[]       @relation("CustomerReviews")
+  providerReviews        Review[]       @relation("ProviderReviews")
+  customerPayments       Payment[]      @relation("CustomerPayments")
+  providerPayments       Payment[]      @relation("ProviderPayments")
+  notifications          Notification[]
 
   @@map("users")
 }
 
 model Service {
-  id           Int        @id @default(autoincrement())
-  userId       Int        @map("user_id")
+  id           Int            @id @default(autoincrement())
+  userId       Int            @map("user_id")
   title        String
   category     String
   description  String
   city         String?
-  priceFrom    Int?       @map("price_from")
-  createdAt    DateTime   @default(now()) @map("created_at")
+  priceFrom    Int?           @map("price_from")
+  createdAt    DateTime       @default(now()) @map("created_at")
 
-  provider     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   bookings     Booking[]
   quotes       Quote[]
+  images       ServiceImage[]
 
   @@map("services")
+}
+
+model ServiceImage {
+  id         Int       @id @default(autoincrement())
+  serviceId  Int       @map("service_id")
+  imageUrl   String    @map("image_url")
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  service    Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("service_images")
 }
 
 model Booking {
@@ -123,16 +146,16 @@ model Quote {
 }
 
 model QuoteOffer {
-  id           Int         @id @default(autoincrement())
-  quoteId       Int        @map("quote_id")
-  providerId    Int        @map("provider_id")
-  amount        Int
-  message       String?
-  status        OfferStatus @default(offered)
-  createdAt     DateTime   @default(now()) @map("created_at")
+  id           Int           @id @default(autoincrement())
+  quoteId      Int           @map("quote_id")
+  providerId   Int           @map("provider_id")
+  amount       Int
+  message      String?
+  status       OfferStatus   @default(offered)
+  createdAt    DateTime      @default(now()) @map("created_at")
 
-  quote         Quote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  provider      User       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  quote        Quote         @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  provider     User          @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@map("quote_offers")
 }
@@ -154,32 +177,37 @@ model Message {
 
 model Review {
   id           Int        @id @default(autoincrement())
-  bookingId     Int       @unique @map("booking_id")
-  providerId    Int       @map("provider_id")
-  customerId    Int       @map("customer_id")
-  rating        Int
-  comment       String?
-  createdAt     DateTime  @default(now()) @map("created_at")
+  bookingId    Int        @unique @map("booking_id")
+  providerId   Int        @map("provider_id")
+  customerId   Int        @map("customer_id")
+  rating       Int
+  comment      String?
+  createdAt    DateTime   @default(now()) @map("created_at")
 
-  booking       Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  provider      User      @relation("ProviderReviews", fields: [providerId], references: [id], onDelete: Cascade)
-  customer      User      @relation("CustomerReviews", fields: [customerId], references: [id], onDelete: Cascade)
+  booking      Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  provider     User       @relation("ProviderReviews", fields: [providerId], references: [id], onDelete: Cascade)
+  customer     User       @relation("CustomerReviews", fields: [customerId], references: [id], onDelete: Cascade)
 
   @@map("reviews")
 }
 
 model Payment {
-  id           Int           @id @default(autoincrement())
-  bookingId     Int          @unique @map("booking_id")
-  customerId    Int          @map("customer_id")
-  amount        Int
-  currency      String       @default("NGN")
-  reference     String       @unique
-  status        PaymentStatus @default(initialized)
-  createdAt     DateTime     @default(now()) @map("created_at")
+  id            Int            @id @default(autoincrement())
+  bookingId      Int           @unique @map("booking_id")
+  customerId     Int           @map("customer_id")
+  providerId     Int?          @map("provider_id")
+  amount         Int
+  currency       String        @default("NGN")
+  reference      String        @unique
+  status         PaymentStatus @default(initialized)
+  platformFee    Int?          @map("platform_fee")
+  providerShare  Int?          @map("provider_share")
+  subaccountCode String?       @map("subaccount_code")
+  createdAt      DateTime      @default(now()) @map("created_at")
 
-  booking       Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  customer      User         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  booking        Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  customer       User          @relation("CustomerPayments", fields: [customerId], references: [id], onDelete: Cascade)
+  provider       User?         @relation("ProviderPayments", fields: [providerId], references: [id], onDelete: SetNull)
 
   @@map("payments")
 }

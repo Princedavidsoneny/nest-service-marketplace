@@ -1,5 +1,16 @@
  import { useEffect, useMemo, useState } from "react";
 import { createService, fetchMyServices } from "../services";
+import {
+  fetchServiceImages,
+  uploadServiceImage,
+  deleteServiceImage,
+} from "../api/serviceImages";
+
+const API_BASE = (
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  "http://127.0.0.1:5000"
+).replace(/\/+$/, "");
 
 function money(value) {
   const n = Number(value || 0);
@@ -7,7 +18,7 @@ function money(value) {
   return `₦${n.toLocaleString()}`;
 }
 
-function getServiceImage(service) {
+function fallbackServiceImage(service) {
   const text = `${service?.title || ""} ${service?.category || ""}`.toLowerCase();
 
   if (text.includes("plumb")) return "/images/services/plumber.jpg";
@@ -21,6 +32,13 @@ function getServiceImage(service) {
   if (text.includes("move")) return "/images/services/moving.jpg";
 
   return "/images/services/default.jpg";
+}
+
+function publicImageUrl(value) {
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+  if (String(value).startsWith("/")) return `${API_BASE}${value}`;
+  return `${API_BASE}/${String(value).replace(/^\/+/, "")}`;
 }
 
 function dedupeById(list = []) {
@@ -59,7 +77,7 @@ function friendlyErrorMessage(error) {
     return "Please enter a service description.";
   }
 
-  return "Something went wrong. Please try again.";
+  return error?.message || "Something went wrong. Please try again.";
 }
 
 function normalizeService(service) {
@@ -70,6 +88,8 @@ function normalizeService(service) {
     city: service?.city || "N/A",
     priceFrom: Number(service?.priceFrom || service?.price_from || 0) || 0,
     description: service?.description || "No description provided.",
+    coverImage: service?.coverImage || "",
+    images: Array.isArray(service?.images) ? service.images : [],
   };
 }
 
@@ -80,9 +100,17 @@ export default function ProviderDashboard() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
 
+  const [uploadingFor, setUploadingFor] = useState(null);
+  const [deletingImageId, setDeletingImageId] = useState(null);
+  const [imageFiles, setImageFiles] = useState({});
+  const [serviceImageMap, setServiceImageMap] = useState({});
+  const [galleryError, setGalleryError] = useState("");
+  const [galleryMsg, setGalleryMsg] = useState("");
+
   const [form, setForm] = useState({
     title: "",
     category: "",
+    customCategory: "",
     city: "",
     priceFrom: "",
     description: "",
@@ -101,7 +129,32 @@ export default function ProviderDashboard() {
     "appliance repair",
     "moving service",
     "general",
+    "other",
   ];
+
+  async function loadServiceImages(serviceId) {
+    try {
+      const data = await fetchServiceImages(serviceId);
+      const images = Array.isArray(data?.images) ? data.images : [];
+      setServiceImageMap((prev) => ({
+        ...prev,
+        [serviceId]: images,
+      }));
+    } catch {
+      setServiceImageMap((prev) => ({
+        ...prev,
+        [serviceId]: [],
+      }));
+    }
+  }
+
+  async function loadAllImages(serviceList) {
+    await Promise.all(
+      serviceList.map(async (service) => {
+        await loadServiceImages(service.id);
+      })
+    );
+  }
 
   async function load() {
     try {
@@ -110,7 +163,10 @@ export default function ProviderDashboard() {
 
       const data = await fetchMyServices();
       const list = Array.isArray(data) ? data : data?.rows || [];
-      setServices(dedupeById(list).map(normalizeService));
+      const normalized = dedupeById(list).map(normalizeService);
+
+      setServices(normalized);
+      await loadAllImages(normalized);
     } catch (e) {
       setErr(e?.message || "Failed to load your services");
       setServices([]);
@@ -124,10 +180,13 @@ export default function ProviderDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!msg) return;
-    const t = setTimeout(() => setMsg(""), 2500);
+    if (!msg && !galleryMsg) return;
+    const t = setTimeout(() => {
+      setMsg("");
+      setGalleryMsg("");
+    }, 2500);
     return () => clearTimeout(t);
-  }, [msg]);
+  }, [msg, galleryMsg]);
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -137,10 +196,18 @@ export default function ProviderDashboard() {
     setForm({
       title: "",
       category: "",
+      customCategory: "",
       city: "",
       priceFrom: "",
       description: "",
     });
+  }
+
+  function handleImageFileChange(serviceId, file) {
+    setImageFiles((prev) => ({
+      ...prev,
+      [serviceId]: file || null,
+    }));
   }
 
   async function handleSubmit(e) {
@@ -149,9 +216,14 @@ export default function ProviderDashboard() {
     try {
       setErr("");
       setMsg("");
+      setGalleryError("");
+      setGalleryMsg("");
 
       const title = form.title.trim();
-      const category = form.category.trim();
+      const selectedCategory = form.category.trim();
+      const customCategory = form.customCategory.trim();
+      const category =
+        selectedCategory === "other" ? customCategory : selectedCategory;
       const city = form.city.trim();
       const description = form.description.trim();
       const priceNumber = Number(form.priceFrom || 0);
@@ -161,8 +233,13 @@ export default function ProviderDashboard() {
         return;
       }
 
-      if (!category) {
+      if (!selectedCategory) {
         setErr("Category is required.");
+        return;
+      }
+
+      if (selectedCategory === "other" && !customCategory) {
+        setErr("Please enter your custom category.");
         return;
       }
 
@@ -196,6 +273,52 @@ export default function ProviderDashboard() {
     }
   }
 
+  async function handleUploadImage(serviceId) {
+    try {
+      setGalleryError("");
+      setGalleryMsg("");
+
+      const file = imageFiles[serviceId];
+      if (!file) {
+        setGalleryError("Please choose an image first.");
+        return;
+      }
+
+      setUploadingFor(serviceId);
+
+      await uploadServiceImage(serviceId, file);
+      await loadServiceImages(serviceId);
+
+      setImageFiles((prev) => ({
+        ...prev,
+        [serviceId]: null,
+      }));
+
+      setGalleryMsg("Service image uploaded successfully.");
+    } catch (e) {
+      setGalleryError(friendlyErrorMessage(e));
+    } finally {
+      setUploadingFor(null);
+    }
+  }
+
+  async function handleDeleteImage(serviceId, imageId) {
+    try {
+      setGalleryError("");
+      setGalleryMsg("");
+      setDeletingImageId(imageId);
+
+      await deleteServiceImage(imageId);
+      await loadServiceImages(serviceId);
+
+      setGalleryMsg("Image deleted successfully.");
+    } catch (e) {
+      setGalleryError(friendlyErrorMessage(e));
+    } finally {
+      setDeletingImageId(null);
+    }
+  }
+
   const stats = useMemo(() => {
     const total = services.length;
     const withCity = services.filter((s) => s?.city && s.city !== "N/A").length;
@@ -216,7 +339,7 @@ export default function ProviderDashboard() {
               Provider Dashboard
             </h1>
             <p className="mt-3 max-w-2xl text-base text-slate-300 md:text-lg">
-              Create and manage your service listings, set your pricing, and make your business visible to customers searching for trusted local professionals.
+              Create and manage your service listings, upload service photos, set your pricing, and make your business visible to customers searching for trusted local professionals.
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -298,7 +421,13 @@ export default function ProviderDashboard() {
                 </label>
                 <select
                   value={form.category}
-                  onChange={(e) => updateField("category", e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    updateField("category", value);
+                    if (value !== "other") {
+                      updateField("customCategory", "");
+                    }
+                  }}
                   className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none focus:border-cyan-400/60"
                 >
                   <option value="">Select category</option>
@@ -308,6 +437,20 @@ export default function ProviderDashboard() {
                     </option>
                   ))}
                 </select>
+
+                {form.category === "other" ? (
+                  <div className="mt-4">
+                    <label className="mb-2 block text-sm text-slate-300">
+                      Custom category
+                    </label>
+                    <input
+                      value={form.customCategory}
+                      onChange={(e) => updateField("customCategory", e.target.value)}
+                      placeholder="e.g. driver"
+                      className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
+                    />
+                  </div>
+                ) : null}
               </div>
 
               <div>
@@ -398,6 +541,18 @@ export default function ProviderDashboard() {
               </button>
             </div>
 
+            {galleryMsg ? (
+              <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                {galleryMsg}
+              </div>
+            ) : null}
+
+            {galleryError ? (
+              <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {galleryError}
+              </div>
+            ) : null}
+
             {loading ? (
               <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-6 text-slate-300">
                 Loading services...
@@ -413,52 +568,120 @@ export default function ProviderDashboard() {
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
-                {services.map((service) => (
-                  <div
-                    key={service.id}
-                    className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/50 shadow-lg"
-                  >
-                    <img
-                      src={getServiceImage(service)}
-                      alt={service.title}
-                      className="h-40 w-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = "/images/services/default.jpg";
-                      }}
-                    />
+                {services.map((service) => {
+                  const uploadedImages = serviceImageMap[service.id] || [];
+                  const cover =
+                    uploadedImages[0]?.imageUrl
+                      ? publicImageUrl(uploadedImages[0].imageUrl)
+                      : service.coverImage
+                      ? publicImageUrl(service.coverImage)
+                      : fallbackServiceImage(service);
 
-                    <div className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h3 className="truncate text-lg font-semibold text-white">
-                            {service.title}
-                          </h3>
-                          <div className="mt-1 text-sm text-slate-300">
-                            {service.category} • {service.city}
+                  return (
+                    <div
+                      key={service.id}
+                      className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/50 shadow-lg"
+                    >
+                      <img
+                        src={cover}
+                        alt={service.title}
+                        className="h-40 w-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = "/images/services/default.jpg";
+                        }}
+                      />
+
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="truncate text-lg font-semibold text-white">
+                              {service.title}
+                            </h3>
+                            <div className="mt-1 text-sm text-slate-300">
+                              {service.category} • {service.city}
+                            </div>
+                          </div>
+
+                          <div className="rounded-full border border-white/10 bg-slate-950/80 px-3 py-1 text-sm font-semibold text-cyan-300">
+                            {money(service.priceFrom)}
                           </div>
                         </div>
 
-                        <div className="rounded-full border border-white/10 bg-slate-950/80 px-3 py-1 text-sm font-semibold text-cyan-300">
-                          {money(service.priceFrom)}
+                        <p className="mt-3 min-h-[48px] text-sm text-slate-300">
+                          {service.description}
+                        </p>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                            Service ID: {service.id}
+                          </span>
+
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                            Active
+                          </span>
+                        </div>
+
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/50 p-3">
+                          <div className="mb-2 text-sm font-semibold text-white">
+                            Service Images
+                          </div>
+
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) =>
+                              handleImageFileChange(service.id, e.target.files?.[0] || null)
+                            }
+                            className="w-full rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-slate-300"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => handleUploadImage(service.id)}
+                            disabled={uploadingFor === service.id}
+                            className="mt-3 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60"
+                          >
+                            {uploadingFor === service.id ? "Uploading..." : "Upload Image"}
+                          </button>
+
+                          {uploadedImages.length > 0 ? (
+                            <div className="mt-4 grid grid-cols-3 gap-2">
+                              {uploadedImages.map((image) => (
+                                <div
+                                  key={image.id}
+                                  className="overflow-hidden rounded-xl border border-white/10 bg-slate-900"
+                                >
+                                  <img
+                                    src={publicImageUrl(image.imageUrl)}
+                                    alt="Service"
+                                    className="h-20 w-full object-cover"
+                                  />
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteImage(service.id, image.id)
+                                    }
+                                    disabled={deletingImageId === image.id}
+                                    className="w-full border-t border-white/10 px-2 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/10 disabled:opacity-60"
+                                  >
+                                    {deletingImageId === image.id
+                                      ? "Deleting..."
+                                      : "Delete"}
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-3 text-xs text-slate-400">
+                              No uploaded images yet for this service.
+                            </div>
+                          )}
                         </div>
                       </div>
-
-                      <p className="mt-3 min-h-[48px] text-sm text-slate-300">
-                        {service.description}
-                      </p>
-
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-                          Service ID: {service.id}
-                        </span>
-
-                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-                          Active
-                        </span>
-                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

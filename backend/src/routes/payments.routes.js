@@ -18,9 +18,16 @@ router.post("/payments/init", authRequired, async (req, res) => {
       where: { id: bookingId },
       include: {
         service: {
-          select: {
-            title: true,
-            priceFrom: true,
+          include: {
+            provider: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                paystackSubaccountCode: true,
+                platformSplitPercent: true,
+              },
+            },
           },
         },
       },
@@ -38,9 +45,14 @@ router.post("/payments/init", authRequired, async (req, res) => {
       return res.json({ alreadyPaid: true });
     }
 
-    const amountNaira = Number(
-      booking.amount || booking.service?.priceFrom || 0
-    );
+    const provider = booking.service?.provider;
+    if (!provider?.paystackSubaccountCode) {
+      return res.status(400).json({
+        error: "Provider payout setup is not completed yet",
+      });
+    }
+
+    const amountNaira = Number(booking.amount || booking.service?.priceFrom || 0);
 
     if (!amountNaira || amountNaira <= 0) {
       return res.status(400).json({ error: "Booking has no price" });
@@ -50,20 +62,32 @@ router.post("/payments/init", authRequired, async (req, res) => {
     const appUrl = requireEnv("APP_URL");
     const reference = `OWF_${bookingId}_${Date.now()}`;
 
+    const platformPercent = Number(provider.platformSplitPercent || process.env.PAYSTACK_PLATFORM_PERCENT || 10);
+    const platformFee = Math.round((amountNaira * platformPercent) / 100);
+    const providerShare = amountNaira - platformFee;
+
     await prisma.payment.upsert({
       where: { bookingId },
       update: {
         customerId: req.user.id,
+        providerId: provider.id,
         amount: amountNaira,
         reference,
         status: "initialized",
+        platformFee,
+        providerShare,
+        subaccountCode: provider.paystackSubaccountCode,
       },
       create: {
         bookingId,
         customerId: req.user.id,
+        providerId: provider.id,
         amount: amountNaira,
         reference,
         status: "initialized",
+        platformFee,
+        providerShare,
+        subaccountCode: provider.paystackSubaccountCode,
       },
     });
 
@@ -81,6 +105,7 @@ router.post("/payments/init", authRequired, async (req, res) => {
         reference,
         callback_url: callbackUrl,
         currency: "NGN",
+        subaccount: provider.paystackSubaccountCode,
       },
       {
         headers: {
@@ -93,10 +118,14 @@ router.post("/payments/init", authRequired, async (req, res) => {
       reference,
       access_code: response.data?.data?.access_code,
       authorization_url: response.data?.data?.authorization_url,
+      providerShare,
+      platformFee,
     });
   } catch (error) {
     console.error("POST /payments/init error:", error.response?.data || error.message);
-    return res.status(500).json({ error: "Paystack init failed" });
+    return res.status(500).json({
+      error: error.response?.data?.message || error.message || "Paystack init failed",
+    });
   }
 });
 

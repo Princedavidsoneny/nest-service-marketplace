@@ -4,322 +4,495 @@ import {
   updateMyProviderProfile,
   uploadProviderProfileImage,
 } from "../services";
+import { getToken } from "../auth";
 
-function friendlyError(error) {
-  const raw = String(error?.message || "").toLowerCase();
+const API = (
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  "http://127.0.0.1:5000"
+).replace(/\/+$/, "");
 
-  if (raw.includes("missing token") || raw.includes("invalid token")) {
-    return "Please log in again and try.";
-  }
-
-  if (raw.includes("forbidden")) {
-    return "Only providers can update provider settings.";
-  }
-
-  if (raw.includes("valid http") || raw.includes("uploaded image path")) {
-    return "Please use a valid image URL or upload a supported image file.";
-  }
-
-  if (raw.includes("name is required")) {
-    return "Provider name is required.";
-  }
-
-  if (
-    raw.includes("only jpg") ||
-    raw.includes("jpeg") ||
-    raw.includes("png") ||
-    raw.includes("webp")
-  ) {
-    return "Only JPG, JPEG, PNG, and WEBP images are allowed.";
-  }
-
-  if (raw.includes("file too large")) {
-    return "Image is too large. Please choose a smaller file.";
-  }
-
-  return "Something went wrong. Please try again.";
+function authHeaders() {
+  const token = getToken();
+  return token
+    ? {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      }
+    : { Accept: "application/json" };
 }
 
-function getInitials(name = "") {
-  const parts = String(name).trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "P";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-}
-
-function isValidUrl(value = "") {
-  const text = String(value).trim();
-  if (!text) return true;
-
+async function toJson(res) {
+  const text = await res.text();
+  let data = {};
   try {
-    const url = new URL(text);
-    return url.protocol === "http:" || url.protocol === "https:";
+    data = text ? JSON.parse(text) : {};
   } catch {
-    return false;
+    data = { message: text };
   }
+
+  if (!res.ok) {
+    throw new Error(data?.error || data?.message || "Request failed");
+  }
+
+  return data;
+}
+
+async function fetchBanks() {
+  const res = await fetch(`${API}/payouts/banks`, {
+    headers: authHeaders(),
+  });
+  return toJson(res);
+}
+
+async function fetchPayoutProfile() {
+  const res = await fetch(`${API}/payouts/me`, {
+    headers: authHeaders(),
+  });
+  return toJson(res);
+}
+
+async function resolveAccount(payload) {
+  const res = await fetch(`${API}/payouts/resolve-account`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return toJson(res);
+}
+
+async function savePayoutSetup(payload) {
+  const res = await fetch(`${API}/payouts/setup`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return toJson(res);
 }
 
 export default function ProviderSettings() {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [err, setErr] = useState("");
-  const [msg, setMsg] = useState("");
-  const [imageBroken, setImageBroken] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingPayout, setSavingPayout] = useState(false);
+  const [verifyingAccount, setVerifyingAccount] = useState(false);
 
-  const [form, setForm] = useState({
+  const [profileError, setProfileError] = useState("");
+  const [profileSuccess, setProfileSuccess] = useState("");
+  const [payoutError, setPayoutError] = useState("");
+  const [payoutSuccess, setPayoutSuccess] = useState("");
+
+  const [banks, setBanks] = useState([]);
+  const [profileImageFile, setProfileImageFile] = useState(null);
+
+  const [profileForm, setProfileForm] = useState({
     name: "",
     bio: "",
     profileImage: "",
   });
 
+  const [payoutForm, setPayoutForm] = useState({
+    bankName: "",
+    bankCode: "",
+    accountNumber: "",
+    accountName: "",
+    businessName: "",
+    payoutVerified: false,
+    paystackSubaccountCode: "",
+    platformSplitPercent: 10,
+  });
+
+  const selectedBank = useMemo(
+    () => banks.find((bank) => bank.code === payoutForm.bankCode) || null,
+    [banks, payoutForm.bankCode]
+  );
+
   useEffect(() => {
-    async function load() {
+    let mounted = true;
+
+    async function loadPage() {
       try {
         setLoading(true);
-        setErr("");
-        setMsg("");
 
-        const profile = await fetchMyProviderProfile();
+        const [provider, payout, bankResponse] = await Promise.all([
+          fetchMyProviderProfile(),
+          fetchPayoutProfile().catch(() => null),
+          fetchBanks().catch(() => ({ banks: [] })),
+        ]);
 
-        setForm({
-          name: profile?.name || "",
-          bio: profile?.bio || "",
-          profileImage: profile?.profileImage || "",
+        if (!mounted) return;
+
+        setProfileForm({
+          name: provider?.name || "",
+          bio: provider?.bio || "",
+          profileImage: provider?.profileImage || "",
         });
-      } catch (e) {
-        setErr(friendlyError(e));
+
+        setPayoutForm({
+          bankName: payout?.bankName || "",
+          bankCode: payout?.bankCode || "",
+          accountNumber: payout?.accountNumber || "",
+          accountName: payout?.accountName || "",
+          businessName: payout?.payoutBusinessName || provider?.name || "",
+          payoutVerified: Boolean(payout?.payoutVerified),
+          paystackSubaccountCode: payout?.paystackSubaccountCode || "",
+          platformSplitPercent: Number(payout?.platformSplitPercent || 10),
+        });
+
+        setBanks(Array.isArray(bankResponse?.banks) ? bankResponse.banks : []);
+      } catch (error) {
+        setProfileError(error.message || "Failed to load settings");
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     }
 
-    load();
+    loadPage();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  useEffect(() => {
-    if (!msg) return;
-    const t = setTimeout(() => setMsg(""), 2500);
-    return () => clearTimeout(t);
-  }, [msg]);
+  function onProfileChange(event) {
+    const { name, value } = event.target;
+    setProfileForm((prev) => ({ ...prev, [name]: value }));
+  }
 
-  function updateField(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    if (key === "profileImage") {
-      setImageBroken(false);
+  function onPayoutChange(event) {
+    const { name, value } = event.target;
+    setPayoutForm((prev) => ({ ...prev, [name]: value }));
+
+    if (name === "bankCode") {
+      const bank = banks.find((item) => item.code === value);
+      setPayoutForm((prev) => ({
+        ...prev,
+        bankCode: value,
+        bankName: bank?.name || "",
+      }));
     }
   }
 
-  async function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function handleProfileSave(event) {
+    event.preventDefault();
+    setProfileError("");
+    setProfileSuccess("");
 
     try {
-      setUploading(true);
-      setErr("");
-      setMsg("");
-      setImageBroken(false);
+      setSavingProfile(true);
 
-      const res = await uploadProviderProfileImage(file);
-      updateField("profileImage", res?.imageUrl || res?.imagePath || "");
+      let imageValue = profileForm.profileImage;
 
-      setMsg("Image uploaded successfully. Click save to keep it on your profile.");
-    } catch (e2) {
-      setErr(friendlyError(e2));
+      if (profileImageFile) {
+        const uploadResult = await uploadProviderProfileImage(profileImageFile);
+        imageValue =
+          uploadResult?.profileImage ||
+          uploadResult?.imageUrl ||
+          uploadResult?.path ||
+          profileForm.profileImage;
+      }
+
+      const updated = await updateMyProviderProfile({
+        name: profileForm.name,
+        bio: profileForm.bio,
+        profileImage: imageValue,
+      });
+
+      setProfileForm((prev) => ({
+        ...prev,
+        profileImage: updated?.profileImage || imageValue || "",
+      }));
+
+      setProfileImageFile(null);
+      setProfileSuccess("Profile updated successfully.");
+    } catch (error) {
+      setProfileError(error.message || "Failed to update profile");
     } finally {
-      setUploading(false);
-      e.target.value = "";
+      setSavingProfile(false);
     }
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleResolveAccount() {
+    setPayoutError("");
+    setPayoutSuccess("");
 
     try {
-      setSaving(true);
-      setErr("");
-      setMsg("");
-      setImageBroken(false);
-
-      const payload = {
-        name: form.name.trim(),
-        bio: form.bio.trim(),
-        profileImage: form.profileImage.trim(),
-      };
-
-      if (!payload.name) {
-        setErr("Provider name is required.");
+      if (!payoutForm.accountNumber || !payoutForm.bankCode) {
+        setPayoutError("Select a bank and enter account number first.");
         return;
       }
 
-      if (
-        payload.profileImage &&
-        !payload.profileImage.startsWith("/uploads/") &&
-        !isValidUrl(payload.profileImage)
-      ) {
-        setErr("Please use a valid image URL or upload an image from your device.");
-        return;
-      }
+      setVerifyingAccount(true);
 
-      await updateMyProviderProfile(payload);
-      setMsg("Provider profile updated successfully.");
-    } catch (e2) {
-      setErr(friendlyError(e2));
+      const data = await resolveAccount({
+        accountNumber: payoutForm.accountNumber,
+        bankCode: payoutForm.bankCode,
+      });
+
+      setPayoutForm((prev) => ({
+        ...prev,
+        accountName: data?.accountName || "",
+      }));
+
+      setPayoutSuccess("Bank account verified successfully.");
+    } catch (error) {
+      setPayoutError(error.message || "Could not verify account");
     } finally {
-      setSaving(false);
+      setVerifyingAccount(false);
     }
   }
 
-  const previewName = useMemo(
-    () => form.name.trim() || "Provider name",
-    [form.name]
-  );
+  async function handlePayoutSave(event) {
+    event.preventDefault();
+    setPayoutError("");
+    setPayoutSuccess("");
 
-  const previewBio = useMemo(
-    () =>
-      form.bio.trim() ||
-      "Your provider bio will appear here. Tell customers about your experience, quality of work, and availability.",
-    [form.bio]
-  );
+    try {
+      setSavingPayout(true);
+
+      const result = await savePayoutSetup({
+        bankName: payoutForm.bankName,
+        bankCode: payoutForm.bankCode,
+        accountNumber: payoutForm.accountNumber,
+        businessName: payoutForm.businessName,
+      });
+
+      const provider = result?.provider || {};
+
+      setPayoutForm((prev) => ({
+        ...prev,
+        bankName: provider.bankName || prev.bankName,
+        bankCode: provider.bankCode || prev.bankCode,
+        accountNumber: provider.accountNumber || prev.accountNumber,
+        accountName: provider.accountName || prev.accountName,
+        businessName: provider.payoutBusinessName || prev.businessName,
+        payoutVerified: Boolean(provider.payoutVerified),
+        paystackSubaccountCode: provider.paystackSubaccountCode || "",
+        platformSplitPercent: Number(provider.platformSplitPercent || prev.platformSplitPercent || 10),
+      }));
+
+      setPayoutSuccess("Payout setup saved successfully.");
+    } catch (error) {
+      setPayoutError(error.message || "Failed to save payout setup");
+    } finally {
+      setSavingPayout(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8 text-slate-300">
+        Loading provider settings...
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-8 grid gap-6 lg:grid-cols-[1fr_320px] lg:items-start">
-          <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-white md:text-5xl">
-              Provider Settings
-            </h1>
-            <p className="mt-3 max-w-2xl text-base text-slate-300 md:text-lg">
-              Update your public provider profile with your display name, photo, and business bio.
-            </p>
-          </div>
+    <div className="mx-auto max-w-5xl px-4 py-8 text-white">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">Provider Settings</h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Update your public profile and configure payout details for split payments.
+        </p>
+      </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-xl">
-            <div className="text-sm text-slate-300">
-              You can either upload an image from your device or paste a direct public image URL.
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+          <h2 className="mb-4 text-xl font-semibold">Public Profile</h2>
+
+          {profileError ? (
+            <div className="mb-4 rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+              {profileError}
             </div>
-          </div>
-        </div>
+          ) : null}
 
-        {loading ? (
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-slate-300">
-            Loading provider settings...
-          </div>
-        ) : (
-          <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-            <form
-              onSubmit={handleSubmit}
-              className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-xl"
+          {profileSuccess ? (
+            <div className="mb-4 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
+              {profileSuccess}
+            </div>
+          ) : null}
+
+          <form onSubmit={handleProfileSave} className="space-y-4">
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Name</label>
+              <input
+                type="text"
+                name="name"
+                value={profileForm.name}
+                onChange={onProfileChange}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                placeholder="Provider name"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Bio</label>
+              <textarea
+                name="bio"
+                value={profileForm.bio}
+                onChange={onProfileChange}
+                rows={5}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                placeholder="Tell customers about your experience and services"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Profile image upload</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setProfileImageFile(e.target.files?.[0] || null)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-300"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Or profile image URL/path</label>
+              <input
+                type="text"
+                name="profileImage"
+                value={profileForm.profileImage}
+                onChange={onProfileChange}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                placeholder="https://example.com/image.jpg or /uploads/file.jpg"
+              />
+            </div>
+
+            {profileForm.profileImage ? (
+              <div className="overflow-hidden rounded-2xl border border-slate-800">
+                <img
+                  src={profileForm.profileImage}
+                  alt="Provider profile"
+                  className="h-48 w-full object-cover"
+                />
+              </div>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={savingProfile}
+              className="rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <h2 className="text-2xl font-bold text-white">Edit public profile</h2>
+              {savingProfile ? "Saving profile..." : "Save profile"}
+            </button>
+          </form>
+        </section>
 
-              <div className="mt-5 space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm text-slate-300">
-                    Provider name
-                  </label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => updateField("name", e.target.value)}
-                    placeholder="Your business or display name"
-                    className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
-                  />
-                </div>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+          <h2 className="mb-4 text-xl font-semibold">Payout Setup</h2>
 
-                <div>
-                  <label className="mb-2 block text-sm text-slate-300">
-                    Upload profile image
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/webp"
-                    onChange={handleFileChange}
-                    className="block w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-sm text-slate-200"
-                  />
-                  <p className="mt-2 text-xs text-slate-400">
-                    Choose JPG, JPEG, PNG, or WEBP. Max size: 5MB.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-slate-300">
-                    Or profile image URL
-                  </label>
-                  <input
-                    value={form.profileImage}
-                    onChange={(e) => updateField("profileImage", e.target.value)}
-                    placeholder="https://example.com/my-photo.jpg"
-                    className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-slate-300">Bio</label>
-                  <textarea
-                    rows={6}
-                    value={form.bio}
-                    onChange={(e) => updateField("bio", e.target.value)}
-                    placeholder="Tell customers about your experience, quality of work, and availability."
-                    className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
-                  />
-                </div>
-              </div>
-
-              {msg ? (
-                <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                  {msg}
-                </div>
-              ) : null}
-
-              {err ? (
-                <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {err}
-                </div>
-              ) : null}
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button
-                  type="submit"
-                  disabled={saving || uploading}
-                  className="rounded-2xl bg-cyan-500 px-6 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60"
-                >
-                  {saving ? "Saving..." : "Save Provider Profile"}
-                </button>
-
-                {uploading ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
-                    Uploading image...
-                  </div>
-                ) : null}
-              </div>
-            </form>
-
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-xl">
-              <h2 className="text-2xl font-bold text-white">Live preview</h2>
-
-              <div className="mt-5 rounded-3xl border border-white/10 bg-slate-900/60 p-5">
-                {form.profileImage && !imageBroken ? (
-                  <img
-                    src={form.profileImage}
-                    alt={previewName}
-                    className="h-40 w-40 rounded-full object-cover ring-4 ring-cyan-500/20"
-                    onError={() => setImageBroken(true)}
-                  />
-                ) : (
-                  <div className="flex h-40 w-40 items-center justify-center rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 text-4xl font-black text-slate-950">
-                    {getInitials(previewName)}
-                  </div>
-                )}
-
-                <div className="mt-5">
-                  <h3 className="text-2xl font-bold text-white">{previewName}</h3>
-                  <p className="mt-2 text-slate-300">{previewBio}</p>
-                </div>
-              </div>
+          {payoutError ? (
+            <div className="mb-4 rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+              {payoutError}
             </div>
+          ) : null}
+
+          {payoutSuccess ? (
+            <div className="mb-4 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
+              {payoutSuccess}
+            </div>
+          ) : null}
+
+          <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+            <p className="text-sm text-slate-300">
+              <span className="font-semibold text-white">Status:</span>{" "}
+              {payoutForm.payoutVerified ? "Verified and ready" : "Not completed"}
+            </p>
+
+            <p className="mt-2 text-sm text-slate-300">
+              <span className="font-semibold text-white">Platform share:</span>{" "}
+              {payoutForm.platformSplitPercent}% per successful payment
+            </p>
+
+            {payoutForm.paystackSubaccountCode ? (
+              <p className="mt-2 break-all text-xs text-slate-400">
+                Subaccount: {payoutForm.paystackSubaccountCode}
+              </p>
+            ) : null}
           </div>
-        )}
+
+          <form onSubmit={handlePayoutSave} className="space-y-4">
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Business name</label>
+              <input
+                type="text"
+                name="businessName"
+                value={payoutForm.businessName}
+                onChange={onPayoutChange}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                placeholder="Business or trading name"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Bank</label>
+              <select
+                name="bankCode"
+                value={payoutForm.bankCode}
+                onChange={onPayoutChange}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+              >
+                <option value="">Select a bank</option>
+                {banks.map((bank) => (
+                  <option key={bank.code} value={bank.code}>
+                    {bank.name}
+                  </option>
+                ))}
+              </select>
+              {selectedBank ? (
+                <p className="mt-2 text-xs text-slate-400">Selected bank: {selectedBank.name}</p>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Account number</label>
+              <input
+                type="text"
+                name="accountNumber"
+                value={payoutForm.accountNumber}
+                onChange={onPayoutChange}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                placeholder="10-digit account number"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Resolved account name</label>
+              <input
+                type="text"
+                value={payoutForm.accountName}
+                readOnly
+                className="w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-300 outline-none"
+                placeholder="Verify account to see account name"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleResolveAccount}
+                disabled={verifyingAccount}
+                className="rounded-xl border border-cyan-500 px-5 py-3 font-semibold text-cyan-400 transition hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {verifyingAccount ? "Verifying..." : "Verify account"}
+              </button>
+
+              <button
+                type="submit"
+                disabled={savingPayout}
+                className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingPayout ? "Saving payout..." : "Save payout setup"}
+              </button>
+            </div>
+          </form>
+        </section>
       </div>
     </div>
   );

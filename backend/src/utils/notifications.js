@@ -1,18 +1,51 @@
- import db from "../config/db.js";
+ import prisma from "../config/prisma.js";
 
-export function createNotification(
+export async function createNotification(
   userId,
   title,
-  body = "",
-  type = "general",
+  message = "",
+  type = "",
   refId = null
 ) {
-  if (!userId) return;
+  try {
+    await prisma.notification.create({
+      data: {
+        userId,
+        title,
+        message,
+        type,
+        refId,
+      },
+    });
+  } catch (err) {
+    console.error("createNotification error:", err);
+  }
+}
 
-  const safeBody = String(body || "").trim() || "You have a new notification.";
+export async function getNotifications(userId) {
+  return prisma.notification.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
+}
 
-  db.prepare(`
-    INSERT INTO notifications (user_id, title, body, message, type, ref_id)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(userId, title, safeBody, safeBody, type, refId);
+export async function getUnreadCount(userId) {
+  return prisma.notification.count({
+    where: {
+      userId,
+      isRead: false,
+    },
+  });
+}
+
+export async function markAllAsRead(userId) {
+  return prisma.notification.updateMany({
+    where: {
+      userId,
+      isRead: false,
+    },
+    data: {
+      isRead: true,
+    },
+  });
 }

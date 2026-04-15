@@ -7,29 +7,32 @@ const router = express.Router();
 // GET /services
 router.get("/services", async (req, res) => {
   try {
-    const { category, city, q } = req.query;
+    const category = req.query.category ? String(req.query.category).trim() : "";
+    const city = req.query.city ? String(req.query.city).trim() : "";
+    const q = req.query.q ? String(req.query.q).trim() : "";
 
     const where = {};
 
     if (category) {
-      where.category = String(category).trim();
+      where.category = category;
     }
 
     if (city) {
-      where.city = String(city).trim();
+      where.city = city;
     }
 
     if (q) {
-      const query = String(q).trim();
       where.OR = [
-        { title: { contains: query, mode: "insensitive" } },
-        { description: { contains: query, mode: "insensitive" } },
+        { title: { contains: q, mode: "insensitive" } },
+        { description: { contains: q, mode: "insensitive" } },
+        { category: { contains: q, mode: "insensitive" } },
+        { city: { contains: q, mode: "insensitive" } },
       ];
     }
 
     const services = await prisma.service.findMany({
       where,
-      orderBy: { id: "desc" },
+      orderBy: { createdAt: "desc" },
       include: {
         provider: {
           select: {
@@ -38,10 +41,18 @@ router.get("/services", async (req, res) => {
             profileImage: true,
           },
         },
+        images: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            id: true,
+            imageUrl: true,
+            sortOrder: true,
+          },
+        },
       },
     });
 
-    const providerIds = [...new Set(services.map((s) => s.userId))];
+    const providerIds = [...new Set(services.map((service) => service.userId))];
 
     const reviewStats = providerIds.length
       ? await prisma.review.groupBy({
@@ -87,6 +98,8 @@ router.get("/services", async (req, res) => {
         createdAt: service.createdAt,
         avgRating: stats.avgRating,
         reviewCount: stats.reviewCount,
+        serviceImages: service.images || [],
+        primaryImage: service.images?.[0]?.imageUrl || "",
       };
     });
 
@@ -98,70 +111,116 @@ router.get("/services", async (req, res) => {
 });
 
 // GET /services/mine
-router.get("/services/mine", authRequired, requireRole("provider"), async (req, res) => {
-  try {
-    const services = await prisma.service.findMany({
-      where: { userId: req.user.id },
-      orderBy: { id: "desc" },
-    });
+router.get(
+  "/services/mine",
+  authRequired,
+  requireRole("provider"),
+  async (req, res) => {
+    try {
+      const services = await prisma.service.findMany({
+        where: { userId: req.user.id },
+        orderBy: { createdAt: "desc" },
+        include: {
+          images: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              imageUrl: true,
+              sortOrder: true,
+            },
+          },
+        },
+      });
 
-    const rows = services.map((service) => ({
-      id: service.id,
-      title: service.title,
-      category: service.category,
-      description: service.description,
-      city: service.city,
-      priceFrom: service.priceFrom,
-      providerId: service.userId,
-      createdAt: service.createdAt,
-    }));
+      const rows = services.map((service) => ({
+        id: service.id,
+        title: service.title,
+        category: service.category,
+        description: service.description,
+        city: service.city,
+        priceFrom: service.priceFrom,
+        providerId: service.userId,
+        createdAt: service.createdAt,
+        serviceImages: service.images || [],
+        primaryImage: service.images?.[0]?.imageUrl || "",
+      }));
 
-    return res.json(rows);
-  } catch (error) {
-    console.error("GET /services/mine error:", error);
-    return res.status(500).json({ error: error.message || "Server error" });
+      return res.json(rows);
+    } catch (error) {
+      console.error("GET /services/mine error:", error);
+      return res.status(500).json({ error: error.message || "Server error" });
+    }
   }
-});
+);
 
 // POST /services
-router.post("/services", authRequired, requireRole("provider"), async (req, res) => {
-  try {
-    const { title, category, city, priceFrom, description } = req.body || {};
+router.post(
+  "/services",
+  authRequired,
+  requireRole("provider"),
+  async (req, res) => {
+    try {
+      const rawTitle = req.body?.title ?? "";
+      const rawCategory = req.body?.category ?? "";
+      const rawCity = req.body?.city ?? "";
+      const rawDescription = req.body?.description ?? "";
+      const rawPriceFrom = req.body?.priceFrom;
 
-    if (!title || !category || !description) {
-      return res.status(400).json({
-        error: "title, category, description required",
+      const title = String(rawTitle).trim();
+      const category = String(rawCategory).trim();
+      const city = String(rawCity).trim();
+      const description = String(rawDescription).trim();
+
+      if (!title || !category || !description) {
+        return res.status(400).json({
+          error: "title, category, description required",
+        });
+      }
+
+      let priceFrom = null;
+
+      if (
+        rawPriceFrom !== undefined &&
+        rawPriceFrom !== null &&
+        rawPriceFrom !== ""
+      ) {
+        const parsedPrice = Number(rawPriceFrom);
+
+        if (!Number.isInteger(parsedPrice) || parsedPrice < 0) {
+          return res.status(400).json({
+            error: "priceFrom must be a valid non-negative whole number",
+          });
+        }
+
+        priceFrom = parsedPrice;
+      }
+
+      const created = await prisma.service.create({
+        data: {
+          userId: req.user.id,
+          title,
+          category,
+          city: city || null,
+          priceFrom,
+          description,
+        },
       });
+
+      return res.status(201).json({
+        id: created.id,
+        title: created.title,
+        category: created.category,
+        description: created.description,
+        city: created.city,
+        priceFrom: created.priceFrom,
+        providerId: created.userId,
+        createdAt: created.createdAt,
+      });
+    } catch (error) {
+      console.error("POST /services error:", error);
+      return res.status(500).json({ error: error.message || "Server error" });
     }
-
-    const created = await prisma.service.create({
-      data: {
-        userId: req.user.id,
-        title: String(title).trim(),
-        category: String(category).trim(),
-        city: city ? String(city).trim() : null,
-        priceFrom:
-          priceFrom !== undefined && priceFrom !== null && priceFrom !== ""
-            ? Number(priceFrom)
-            : null,
-        description: String(description).trim(),
-      },
-    });
-
-    return res.json({
-      id: created.id,
-      title: created.title,
-      category: created.category,
-      description: created.description,
-      city: created.city,
-      priceFrom: created.priceFrom,
-      providerId: created.userId,
-      createdAt: created.createdAt,
-    });
-  } catch (error) {
-    console.error("POST /services error:", error);
-    return res.status(500).json({ error: error.message || "Server error" });
   }
-});
+);
 
 export default router;
