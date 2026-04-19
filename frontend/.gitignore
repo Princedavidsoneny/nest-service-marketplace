@@ -1,4 +1,4 @@
-# Logs
+ # Logs
 logs
 *.log
 npm-debug.log*
@@ -7,10 +7,24 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+
+# Build output
 dist
 dist-ssr
+
+# Local env files
+.env
+.env.*
 *.local
+backend/.env
+frontend/.env
+
+# Local uploads and databases
+backend/uploads
+backend/database.sqlite
+backend/database-backup-before-postgres.sqlite
 
 # Editor directories and files
 .vscode/*
