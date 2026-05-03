@@ -3,8 +3,67 @@ import { useNavigate, Link } from "react-router-dom";
 import { registerUser } from "../services";
 import { saveAuth } from "../auth";
 
+const COMMON_EMAIL_DOMAINS = [
+  "gmail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "live.com",
+  "proton.me",
+  "protonmail.com",
+];
+
+function validateEmail(email) {
+  const safeEmail = String(email || "").trim().toLowerCase();
+
+  if (!safeEmail) return "Please enter your email address.";
+
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  if (!emailPattern.test(safeEmail)) {
+    return "Please enter a valid email address.";
+  }
+
+  const domain = safeEmail.split("@")[1];
+
+  const typoFixes = {
+    "gamil.com": "gmail.com",
+    "gmial.com": "gmail.com",
+    "gmail.co": "gmail.com",
+    "gmail.con": "gmail.com",
+    "yaho.com": "yahoo.com",
+    "yahoo.co": "yahoo.com",
+    "outlok.com": "outlook.com",
+    "hotmial.com": "hotmail.com",
+    "iclod.com": "icloud.com",
+  };
+
+  if (typoFixes[domain]) {
+    return `Email domain looks wrong. Did you mean ${typoFixes[domain]}?`;
+  }
+
+  const allowed =
+    COMMON_EMAIL_DOMAINS.includes(domain) ||
+    domain.endsWith(".com") ||
+    domain.endsWith(".co.uk") ||
+    domain.endsWith(".org") ||
+    domain.endsWith(".net") ||
+    domain.endsWith(".edu") ||
+    domain.endsWith(".gov");
+
+  if (!allowed) return "Please use a valid, recognised email address.";
+
+  return "";
+}
+
 function friendlyError(error) {
-  const raw = String(error?.message || "").toLowerCase();
+  const raw = String(
+    error?.response?.data?.error ||
+      error?.response?.data?.message ||
+      error?.message ||
+      ""
+  ).toLowerCase();
 
   if (raw.includes("email already exists")) {
     return "An account with this email already exists.";
@@ -41,7 +100,7 @@ export default function Register() {
     setErr("");
 
     const safeName = name.trim();
-    const safeEmail = email.trim();
+    const safeEmail = email.trim().toLowerCase();
     const safePassword = password.trim();
 
     if (!safeName || !safeEmail || !safePassword || !role) {
@@ -49,8 +108,19 @@ export default function Register() {
       return;
     }
 
+    const emailError = validateEmail(safeEmail);
+    if (emailError) {
+      setErr(emailError);
+      return;
+    }
+
     if (safePassword.length < 6) {
       setErr("Password should be at least 6 characters.");
+      return;
+    }
+
+    if (!["customer", "provider"].includes(role)) {
+      setErr("Please choose a valid account type.");
       return;
     }
 
@@ -80,22 +150,30 @@ export default function Register() {
           <h1 className="text-4xl font-extrabold tracking-tight text-white">
             Join Nest today
           </h1>
+
           <p className="mt-4 max-w-2xl text-lg text-slate-300">
-            Create an account as a customer to book services, or as a provider to list your business and receive bookings and quote requests.
+            Create an account as a customer to book services, or as a provider
+            to list your business and receive bookings and quote requests.
           </p>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-5">
-              <div className="text-sm font-semibold text-white">Customer account</div>
+              <div className="text-sm font-semibold text-white">
+                Customer account
+              </div>
               <p className="mt-2 text-sm text-slate-300">
-                Browse trusted local providers, request quotes, make bookings, pay, and leave reviews.
+                Browse trusted local providers, request quotes, make bookings,
+                pay, and leave reviews.
               </p>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-5">
-              <div className="text-sm font-semibold text-white">Provider account</div>
+              <div className="text-sm font-semibold text-white">
+                Provider account
+              </div>
               <p className="mt-2 text-sm text-slate-300">
-                Create service listings, manage bookings, reply to quote requests, and build your public profile.
+                Create service listings, manage bookings, reply to quote
+                requests, and build your public profile.
               </p>
             </div>
           </div>
@@ -121,10 +199,14 @@ export default function Register() {
                 Full name
               </label>
               <input
-                className="w-full rounded-2xl border border-gray-700 bg-gray-900 p-3 text-white placeholder-gray-400 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
+                className="w-full rounded-2xl border border-gray-700 bg-gray-900 p-3 text-white placeholder-gray-400 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-60"
                 placeholder="Enter your full name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                disabled={loading}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setErr("");
+                }}
               />
             </div>
 
@@ -133,10 +215,14 @@ export default function Register() {
               <input
                 type="email"
                 autoComplete="email"
-                className="w-full rounded-2xl border border-gray-700 bg-gray-900 p-3 text-white placeholder-gray-400 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
+                className="w-full rounded-2xl border border-gray-700 bg-gray-900 p-3 text-white placeholder-gray-400 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-60"
                 placeholder="Enter your email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setErr("");
+                }}
               />
             </div>
 
@@ -147,10 +233,14 @@ export default function Register() {
               <input
                 type="password"
                 autoComplete="new-password"
-                className="w-full rounded-2xl border border-gray-700 bg-gray-900 p-3 text-white placeholder-gray-400 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
+                className="w-full rounded-2xl border border-gray-700 bg-gray-900 p-3 text-white placeholder-gray-400 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-60"
                 placeholder="Choose a password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setErr("");
+                }}
               />
               <p className="mt-2 text-xs text-slate-400">
                 Use at least 6 characters.
@@ -162,9 +252,13 @@ export default function Register() {
                 Account type
               </label>
               <select
-                className="w-full rounded-2xl border border-gray-700 bg-gray-900 p-3 text-white outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
+                className="w-full rounded-2xl border border-gray-700 bg-gray-900 p-3 text-white outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-60"
                 value={role}
-                onChange={(e) => setRole(e.target.value)}
+                disabled={loading}
+                onChange={(e) => {
+                  setRole(e.target.value);
+                  setErr("");
+                }}
               >
                 <option value="customer">Customer</option>
                 <option value="provider">Provider</option>
@@ -172,7 +266,8 @@ export default function Register() {
             </div>
 
             <button
-              className="w-full rounded-2xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60"
+              type="submit"
+              className="w-full rounded-2xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={loading}
             >
               {loading ? "Creating account..." : "Create account"}
