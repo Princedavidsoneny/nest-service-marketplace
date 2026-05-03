@@ -3,8 +3,78 @@ import { useLocation, useNavigate, Link } from "react-router-dom";
 import { loginUser } from "../services";
 import { saveAuth } from "../auth";
 
+const COMMON_EMAIL_DOMAINS = [
+  "gmail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "live.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+];
+
+function validateEmail(email) {
+  const safeEmail = String(email || "").trim().toLowerCase();
+
+  if (!safeEmail) return "Please enter your email address.";
+
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  if (!emailPattern.test(safeEmail)) {
+    return "Please enter a valid email address.";
+  }
+
+  const domain = safeEmail.split("@")[1];
+
+  if (!domain || !domain.includes(".")) {
+    return "Please enter a valid email domain.";
+  }
+
+  if (domain.includes("..")) {
+    return "Email domain is not valid.";
+  }
+
+  const knownTypoFixes = {
+    "gamil.com": "gmail.com",
+    "gmial.com": "gmail.com",
+    "gmail.co": "gmail.com",
+    "gmail.con": "gmail.com",
+    "yaho.com": "yahoo.com",
+    "yahoo.co": "yahoo.com",
+    "outlok.com": "outlook.com",
+    "hotmial.com": "hotmail.com",
+    "iclod.com": "icloud.com",
+  };
+
+  if (knownTypoFixes[domain]) {
+    return `Email domain looks wrong. Did you mean ${knownTypoFixes[domain]}?`;
+  }
+
+  const allowed =
+    COMMON_EMAIL_DOMAINS.includes(domain) ||
+    domain.endsWith(".com") ||
+    domain.endsWith(".co.uk") ||
+    domain.endsWith(".org") ||
+    domain.endsWith(".net") ||
+    domain.endsWith(".edu") ||
+    domain.endsWith(".gov");
+
+  if (!allowed) {
+    return "Please use a valid, recognised email address.";
+  }
+
+  return "";
+}
+
 function friendlyError(error) {
-  const raw = String(error?.message || "").toLowerCase();
+  const raw = String(
+    error?.response?.data?.error ||
+      error?.response?.data?.message ||
+      error?.message ||
+      ""
+  ).toLowerCase();
 
   if (raw.includes("invalid login")) {
     return "Incorrect email or password.";
@@ -35,11 +105,17 @@ export default function Login() {
     e.preventDefault();
     setErr("");
 
-    const safeEmail = email.trim();
+    const safeEmail = email.trim().toLowerCase();
     const safePassword = password.trim();
 
-    if (!safeEmail || !safePassword) {
-      setErr("Please enter your email and password.");
+    const emailError = validateEmail(safeEmail);
+    if (emailError) {
+      setErr(emailError);
+      return;
+    }
+
+    if (!safePassword) {
+      setErr("Please enter your password.");
       return;
     }
 
@@ -53,10 +129,9 @@ export default function Login() {
 
       saveAuth(data);
 
-      const fallback =
-        data?.user?.role === "provider" ? "/provider" : "/";
-
+      const fallback = data?.user?.role === "provider" ? "/provider" : "/";
       const redirectTo = location.state?.from?.pathname || fallback;
+
       nav(redirectTo, { replace: true });
     } catch (e2) {
       setErr(friendlyError(e2));
@@ -72,8 +147,10 @@ export default function Login() {
           <h1 className="text-4xl font-extrabold tracking-tight text-white">
             Welcome back to Nest
           </h1>
+
           <p className="mt-4 max-w-2xl text-lg text-slate-300">
-            Log in to manage bookings, review offers, chat with providers, and keep track of your marketplace activity.
+            Log in to manage bookings, review offers, chat with providers, and
+            keep track of your marketplace activity.
           </p>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
@@ -122,14 +199,20 @@ export default function Login() {
 
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
-              <label className="mb-2 block text-sm text-slate-300">Email</label>
+              <label className="mb-2 block text-sm text-slate-300">
+                Email
+              </label>
               <input
                 type="email"
                 autoComplete="email"
                 className="w-full rounded-2xl border border-gray-700 bg-gray-900 p-3 text-white placeholder-gray-400 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
                 placeholder="Enter your email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setErr("");
+                }}
+                disabled={loading}
               />
             </div>
 
@@ -143,12 +226,17 @@ export default function Login() {
                 className="w-full rounded-2xl border border-gray-700 bg-gray-900 p-3 text-white placeholder-gray-400 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
                 placeholder="Enter your password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setErr("");
+                }}
+                disabled={loading}
               />
             </div>
 
             <button
-              className="w-full rounded-2xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60"
+              type="submit"
+              className="w-full rounded-2xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={loading}
             >
               {loading ? "Logging in..." : "Login"}
