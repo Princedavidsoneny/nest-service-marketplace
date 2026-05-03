@@ -20,6 +20,10 @@ import ProviderSettings from "./pages/ProviderSettings";
 import PayVerify from "./pages/PayVerify";
 import ProviderProfile from "./pages/ProviderProfile";
 
+import PrivacyPage from "./pages/PrivacyPage";
+import Terms from "./pages/Terms";
+import Contact from "./pages/Contact";
+
 export default function App() {
   return (
     <Routes>
@@ -27,6 +31,10 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="login" element={<Login />} />
         <Route path="register" element={<Register />} />
+
+        <Route path="privacy" element={<PrivacyPage />} />
+        <Route path="terms" element={<Terms />} />
+        <Route path="contact" element={<Contact />} />
 
         <Route
           path="my-bookings"
