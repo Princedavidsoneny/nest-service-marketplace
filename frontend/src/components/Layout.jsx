@@ -5,9 +5,7 @@ import NotificationsBell from "./NotificationsBell";
 function navClass(active = false) {
   return [
     "text-sm md:text-base transition",
-    active
-      ? "text-white font-semibold"
-      : "text-slate-300 hover:text-white",
+    active ? "text-white font-semibold" : "text-slate-300 hover:text-white",
   ].join(" ");
 }
 
@@ -38,16 +36,19 @@ export default function Layout() {
     { to: "/provider-settings", label: "Settings" },
   ];
 
+  const publicLinks = [
+    { to: "/privacy", label: "Privacy" },
+    { to: "/terms", label: "Terms" },
+    { to: "/contact", label: "Contact" },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/85 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center justify-between gap-4">
-              <Link
-                to="/"
-                className="text-3xl font-extrabold tracking-tight text-white"
-              >
+              <Link to="/" className="text-3xl font-extrabold tracking-tight text-white">
                 Nest
               </Link>
 
@@ -72,17 +73,10 @@ export default function Layout() {
 
               {!user ? (
                 <>
-                  <Link
-                    className={navClass(isActive(location.pathname, "/login"))}
-                    to="/login"
-                  >
+                  <Link className={navClass(isActive(location.pathname, "/login"))} to="/login">
                     Login
                   </Link>
-
-                  <Link
-                    className={navClass(isActive(location.pathname, "/register"))}
-                    to="/register"
-                  >
+                  <Link className={navClass(isActive(location.pathname, "/register"))} to="/register">
                     Register
                   </Link>
                 </>
@@ -90,11 +84,7 @@ export default function Layout() {
 
               {user?.role === "customer"
                 ? customerLinks.map((item) => (
-                    <Link
-                      key={item.to}
-                      className={navClass(isActive(location.pathname, item.to))}
-                      to={item.to}
-                    >
+                    <Link key={item.to} className={navClass(isActive(location.pathname, item.to))} to={item.to}>
                       {item.label}
                     </Link>
                   ))
@@ -102,24 +92,23 @@ export default function Layout() {
 
               {user?.role === "provider"
                 ? providerLinks.map((item) => (
-                    <Link
-                      key={item.to}
-                      className={navClass(isActive(location.pathname, item.to))}
-                      to={item.to}
-                    >
+                    <Link key={item.to} className={navClass(isActive(location.pathname, item.to))} to={item.to}>
                       {item.label}
                     </Link>
                   ))
                 : null}
 
               {user?.role === "admin" ? (
-                <Link
-                  className={navClass(isActive(location.pathname, "/admin/users"))}
-                  to="/admin/users"
-                >
+                <Link className={navClass(isActive(location.pathname, "/admin/users"))} to="/admin/users">
                   Admin Users
                 </Link>
               ) : null}
+
+              {publicLinks.map((item) => (
+                <Link key={item.to} className={navClass(isActive(location.pathname, item.to))} to={item.to}>
+                  {item.label}
+                </Link>
+              ))}
             </nav>
 
             <div className="hidden lg:flex lg:items-center lg:gap-3">
@@ -142,6 +131,15 @@ export default function Layout() {
       <main>
         <Outlet />
       </main>
+
+      <footer className="border-t border-white/10 px-4 py-6 text-center text-sm text-slate-400">
+        <div className="flex flex-wrap justify-center gap-4">
+          <Link to="/privacy" className="hover:text-white">Privacy</Link>
+          <Link to="/terms" className="hover:text-white">Terms</Link>
+          <Link to="/contact" className="hover:text-white">Contact</Link>
+        </div>
+        <p className="mt-3">© {new Date().getFullYear()} Nest. All rights reserved.</p>
+      </footer>
     </div>
   );
 }
