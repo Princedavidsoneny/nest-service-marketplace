@@ -71,40 +71,36 @@ router.post("/payouts/resolve-account", authRequired, requireRole("provider"), a
     });
   }
 });
-
-router.get("/payouts/me", authRequired, requireRole("provider"), async (req, res) => {
+ router.get("/payouts/banks", authRequired, requireRole("provider"), async (req, res) => {
   try {
-    const provider = await prisma.user.findFirst({
-      where: {
-        id: req.user.id,
-        role: "provider",
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        bankName: true,
-        bankCode: true,
-        accountNumber: true,
-        accountName: true,
-        payoutBusinessName: true,
-        payoutVerified: true,
-        paystackSubaccountCode: true,
-        platformSplitPercent: true,
+    const response = await axios.get("https://api.paystack.co/bank", {
+      headers: paystackHeaders(),
+      params: {
+        country: "nigeria",
+        currency: "NGN",
+        use_cursor: false,
+        perPage: 200,
       },
     });
 
-    if (!provider) {
-      return res.status(404).json({ error: "Provider not found" });
-    }
+    const banks = (response.data?.data || [])
+      .filter((bank) => bank?.active !== false)
+      .map((bank) => ({
+        name: bank.name,
+        code: bank.code,
+        slug: bank.slug,
+        type: bank.type || "",
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
 
-    return res.json(provider);
+    return res.json({ banks });
   } catch (error) {
-    console.error("GET /payouts/me error:", error);
-    return res.status(500).json({ error: "Failed to load payout profile" });
+    console.error("GET /payouts/banks error:", error.response?.data || error.message);
+    return res.status(500).json({
+      error: error.response?.data?.message || "Failed to load banks",
+    });
   }
 });
-
  router.post("/payouts/setup", authRequired, requireRole("provider"), async (req, res) => {
   try {
     const { bankName, bankCode, accountNumber, accountName, businessName } = req.body || {};

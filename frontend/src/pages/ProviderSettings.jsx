@@ -15,10 +15,7 @@ const API = (
 function authHeaders() {
   const token = getToken();
   return token
-    ? {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-      }
+    ? { Accept: "application/json", Authorization: `Bearer ${token}` }
     : { Accept: "application/json" };
 }
 
@@ -30,35 +27,24 @@ async function toJson(res) {
   } catch {
     data = { message: text };
   }
-
-  if (!res.ok) {
-    throw new Error(data?.error || data?.message || "Request failed");
-  }
-
+  if (!res.ok) throw new Error(data?.error || data?.message || "Request failed");
   return data;
 }
 
 async function fetchBanks() {
-  const res = await fetch(`${API}/payouts/banks`, {
-    headers: authHeaders(),
-  });
+  const res = await fetch(`${API}/payouts/banks`, { headers: authHeaders() });
   return toJson(res);
 }
 
 async function fetchPayoutProfile() {
-  const res = await fetch(`${API}/payouts/me`, {
-    headers: authHeaders(),
-  });
+  const res = await fetch(`${API}/payouts/me`, { headers: authHeaders() });
   return toJson(res);
 }
 
 async function resolveAccount(payload) {
   const res = await fetch(`${API}/payouts/resolve-account`, {
     method: "POST",
-    headers: {
-      ...authHeaders(),
-      "Content-Type": "application/json",
-    },
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   return toJson(res);
@@ -67,10 +53,7 @@ async function resolveAccount(payload) {
 async function savePayoutSetup(payload) {
   const res = await fetch(`${API}/payouts/setup`, {
     method: "POST",
-    headers: {
-      ...authHeaders(),
-      "Content-Type": "application/json",
-    },
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   return toJson(res);
@@ -88,6 +71,7 @@ export default function ProviderSettings() {
   const [payoutSuccess, setPayoutSuccess] = useState("");
 
   const [banks, setBanks] = useState([]);
+  const [bankSearch, setBankSearch] = useState("");
   const [profileImageFile, setProfileImageFile] = useState(null);
 
   const [profileForm, setProfileForm] = useState({
@@ -106,6 +90,14 @@ export default function ProviderSettings() {
     paystackSubaccountCode: "",
     platformSplitPercent: 10,
   });
+
+  const filteredBanks = useMemo(() => {
+    const search = bankSearch.trim().toLowerCase();
+    if (!search) return banks;
+    return banks.filter((bank) =>
+      String(bank.name || "").toLowerCase().includes(search)
+    );
+  }, [banks, bankSearch]);
 
   const selectedBank = useMemo(
     () => banks.find((bank) => bank.code === payoutForm.bankCode) || null,
@@ -153,7 +145,6 @@ export default function ProviderSettings() {
     }
 
     loadPage();
-
     return () => {
       mounted = false;
     };
@@ -166,7 +157,6 @@ export default function ProviderSettings() {
 
   function onPayoutChange(event) {
     const { name, value } = event.target;
-    setPayoutForm((prev) => ({ ...prev, [name]: value }));
 
     if (name === "bankCode") {
       const bank = banks.find((item) => item.code === value);
@@ -174,8 +164,23 @@ export default function ProviderSettings() {
         ...prev,
         bankCode: value,
         bankName: bank?.name || "",
+        accountName: "",
+        payoutVerified: false,
       }));
+      return;
     }
+
+    if (name === "accountNumber") {
+      setPayoutForm((prev) => ({
+        ...prev,
+        accountNumber: value.replace(/\D/g, "").slice(0, 10),
+        accountName: "",
+        payoutVerified: false,
+      }));
+      return;
+    }
+
+    setPayoutForm((prev) => ({ ...prev, [name]: value }));
   }
 
   async function handleProfileSave(event) {
@@ -185,7 +190,6 @@ export default function ProviderSettings() {
 
     try {
       setSavingProfile(true);
-
       let imageValue = profileForm.profileImage;
 
       if (profileImageFile) {
@@ -222,8 +226,13 @@ export default function ProviderSettings() {
     setPayoutSuccess("");
 
     try {
-      if (!payoutForm.accountNumber || !payoutForm.bankCode) {
-        setPayoutError("Select a bank and enter account number first.");
+      if (!payoutForm.bankCode) {
+        setPayoutError("Select a bank first.");
+        return;
+      }
+
+      if (!/^\d{10}$/.test(payoutForm.accountNumber)) {
+        setPayoutError("Enter a valid 10-digit account number.");
         return;
       }
 
@@ -253,12 +262,28 @@ export default function ProviderSettings() {
     setPayoutSuccess("");
 
     try {
+      if (!payoutForm.bankName || !payoutForm.bankCode) {
+        setPayoutError("Please select a bank.");
+        return;
+      }
+
+      if (!/^\d{10}$/.test(payoutForm.accountNumber)) {
+        setPayoutError("Enter a valid 10-digit account number.");
+        return;
+      }
+
+      if (!payoutForm.accountName) {
+        setPayoutError("Please verify the account before saving payout setup.");
+        return;
+      }
+
       setSavingPayout(true);
 
       const result = await savePayoutSetup({
         bankName: payoutForm.bankName,
         bankCode: payoutForm.bankCode,
         accountNumber: payoutForm.accountNumber,
+        accountName: payoutForm.accountName,
         businessName: payoutForm.businessName,
       });
 
@@ -273,7 +298,9 @@ export default function ProviderSettings() {
         businessName: provider.payoutBusinessName || prev.businessName,
         payoutVerified: Boolean(provider.payoutVerified),
         paystackSubaccountCode: provider.paystackSubaccountCode || "",
-        platformSplitPercent: Number(provider.platformSplitPercent || prev.platformSplitPercent || 10),
+        platformSplitPercent: Number(
+          provider.platformSplitPercent || prev.platformSplitPercent || 10
+        ),
       }));
 
       setPayoutSuccess("Payout setup saved successfully.");
@@ -297,7 +324,7 @@ export default function ProviderSettings() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Provider Settings</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Update your public profile and configure payout details for split payments.
+          Update your public profile and configure payout details.
         </p>
       </div>
 
@@ -305,80 +332,16 @@ export default function ProviderSettings() {
         <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
           <h2 className="mb-4 text-xl font-semibold">Public Profile</h2>
 
-          {profileError ? (
-            <div className="mb-4 rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-              {profileError}
-            </div>
-          ) : null}
-
-          {profileSuccess ? (
-            <div className="mb-4 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-              {profileSuccess}
-            </div>
-          ) : null}
+          {profileError ? <div className="mb-4 rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">{profileError}</div> : null}
+          {profileSuccess ? <div className="mb-4 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">{profileSuccess}</div> : null}
 
           <form onSubmit={handleProfileSave} className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm text-slate-300">Name</label>
-              <input
-                type="text"
-                name="name"
-                value={profileForm.name}
-                onChange={onProfileChange}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
-                placeholder="Provider name"
-              />
-            </div>
+            <input name="name" value={profileForm.name} onChange={onProfileChange} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white" placeholder="Provider name" />
+            <textarea name="bio" value={profileForm.bio} onChange={onProfileChange} rows={5} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white" placeholder="Tell customers about your experience and services" />
+            <input type="file" accept="image/*" onChange={(e) => setProfileImageFile(e.target.files?.[0] || null)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-300" />
+            <input name="profileImage" value={profileForm.profileImage} onChange={onProfileChange} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white" placeholder="Image URL or /uploads/file.jpg" />
 
-            <div>
-              <label className="mb-2 block text-sm text-slate-300">Bio</label>
-              <textarea
-                name="bio"
-                value={profileForm.bio}
-                onChange={onProfileChange}
-                rows={5}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
-                placeholder="Tell customers about your experience and services"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm text-slate-300">Profile image upload</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setProfileImageFile(e.target.files?.[0] || null)}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-300"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm text-slate-300">Or profile image URL/path</label>
-              <input
-                type="text"
-                name="profileImage"
-                value={profileForm.profileImage}
-                onChange={onProfileChange}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
-                placeholder="https://example.com/image.jpg or /uploads/file.jpg"
-              />
-            </div>
-
-            {profileForm.profileImage ? (
-              <div className="overflow-hidden rounded-2xl border border-slate-800">
-                <img
-                  src={profileForm.profileImage}
-                  alt="Provider profile"
-                  className="h-48 w-full object-cover"
-                />
-              </div>
-            ) : null}
-
-            <button
-              type="submit"
-              disabled={savingProfile}
-              className="rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <button disabled={savingProfile} className="rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950">
               {savingProfile ? "Saving profile..." : "Save profile"}
             </button>
           </form>
@@ -387,107 +350,35 @@ export default function ProviderSettings() {
         <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
           <h2 className="mb-4 text-xl font-semibold">Payout Setup</h2>
 
-          {payoutError ? (
-            <div className="mb-4 rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-              {payoutError}
-            </div>
-          ) : null}
-
-          {payoutSuccess ? (
-            <div className="mb-4 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-              {payoutSuccess}
-            </div>
-          ) : null}
-
-          <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-950 p-4">
-            <p className="text-sm text-slate-300">
-              <span className="font-semibold text-white">Status:</span>{" "}
-              {payoutForm.payoutVerified ? "Verified and ready" : "Not completed"}
-            </p>
-
-            <p className="mt-2 text-sm text-slate-300">
-              <span className="font-semibold text-white">Platform share:</span>{" "}
-              {payoutForm.platformSplitPercent}% per successful payment
-            </p>
-
-            {payoutForm.paystackSubaccountCode ? (
-              <p className="mt-2 break-all text-xs text-slate-400">
-                Subaccount: {payoutForm.paystackSubaccountCode}
-              </p>
-            ) : null}
-          </div>
+          {payoutError ? <div className="mb-4 rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">{payoutError}</div> : null}
+          {payoutSuccess ? <div className="mb-4 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">{payoutSuccess}</div> : null}
 
           <form onSubmit={handlePayoutSave} className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm text-slate-300">Business name</label>
-              <input
-                type="text"
-                name="businessName"
-                value={payoutForm.businessName}
-                onChange={onPayoutChange}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
-                placeholder="Business or trading name"
-              />
-            </div>
+            <input name="businessName" value={payoutForm.businessName} onChange={onPayoutChange} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white" placeholder="Business name" />
 
-            <div>
-              <label className="mb-2 block text-sm text-slate-300">Bank</label>
-              <select
-                name="bankCode"
-                value={payoutForm.bankCode}
-                onChange={onPayoutChange}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
-              >
-                <option value="">Select a bank</option>
-                {banks.map((bank) => (
-                  <option key={bank.code} value={bank.code}>
-                    {bank.name}
-                  </option>
-                ))}
-              </select>
-              {selectedBank ? (
-                <p className="mt-2 text-xs text-slate-400">Selected bank: {selectedBank.name}</p>
-              ) : null}
-            </div>
+            <input value={bankSearch} onChange={(e) => setBankSearch(e.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white" placeholder="Search bank e.g. Opay, Moniepoint, Access" />
 
-            <div>
-              <label className="mb-2 block text-sm text-slate-300">Account number</label>
-              <input
-                type="text"
-                name="accountNumber"
-                value={payoutForm.accountNumber}
-                onChange={onPayoutChange}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
-                placeholder="10-digit account number"
-              />
-            </div>
+            <select name="bankCode" value={payoutForm.bankCode} onChange={onPayoutChange} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white">
+              <option value="">Select a bank</option>
+              {filteredBanks.map((bank) => (
+                <option key={`${bank.code}-${bank.name}`} value={bank.code}>
+                  {bank.name}
+                </option>
+              ))}
+            </select>
 
-            <div>
-              <label className="mb-2 block text-sm text-slate-300">Resolved account name</label>
-              <input
-                type="text"
-                value={payoutForm.accountName}
-                readOnly
-                className="w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-300 outline-none"
-                placeholder="Verify account to see account name"
-              />
-            </div>
+            {selectedBank ? <p className="text-xs text-slate-400">Selected bank: {selectedBank.name}</p> : null}
+
+            <input name="accountNumber" value={payoutForm.accountNumber} onChange={onPayoutChange} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white" placeholder="10-digit account number" />
+
+            <input value={payoutForm.accountName} readOnly className="w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-300" placeholder="Verify account to see account name" />
 
             <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={handleResolveAccount}
-                disabled={verifyingAccount}
-                className="rounded-xl border border-cyan-500 px-5 py-3 font-semibold text-cyan-400 transition hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-60"
-              >
+              <button type="button" onClick={handleResolveAccount} disabled={verifyingAccount} className="rounded-xl border border-cyan-500 px-5 py-3 font-semibold text-cyan-400">
                 {verifyingAccount ? "Verifying..." : "Verify account"}
               </button>
 
-              <button
-                type="submit"
-                disabled={savingPayout}
-                className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
-              >
+              <button type="submit" disabled={savingPayout} className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-slate-950">
                 {savingPayout ? "Saving payout..." : "Save payout setup"}
               </button>
             </div>
