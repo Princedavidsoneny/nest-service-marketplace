@@ -147,13 +147,21 @@ export default function Home() {
     return images.length
       ? images
       : [
-          "/images/services/handyman.jpg",
-          "/images/services/plumber.jpg",
-          "/images/services/electrician.jpg",
-          "/images/services/cleaner.jpg",
-          "/images/services/mechanic.jpg",
-          "/images/services/default.jpg",
-        ];
+  "/images/services/mechanic.jpg",
+  "/images/services/plumber.jpg",
+  "/images/services/electrician.jpg",
+  "/images/services/driver.jpg",
+  "/images/services/cleaner.jpg",
+  "/images/services/painter.jpg",
+  "/images/services/carpenter.jpg",
+  "/images/services/generator.jpg",
+  "/images/services/appliance.jpg",
+  "/images/services/moving.jpg",
+  "/images/services/handyman.jpg",
+  "/images/services/labourer.jpg",
+  "/images/services/tiler.jpg",
+  "/images/services/default.jpg",
+]
   }, [services]);
 
   useEffect(() => {
@@ -305,15 +313,16 @@ export default function Home() {
               Find trusted local services near you
             </div>
 
-            <h1 className="text-4xl font-extrabold leading-tight text-white md:text-6xl">
-              Book trusted local help with Nest
-            </h1>
+             <h1 className="text-4xl font-black leading-tight text-white md:text-6xl">
+  Find. <span className="text-cyan-300">Hire.</span>{" "}
+  <span className="text-lime-300">Trust.</span> Done.
+</h1>
 
             <p className="mt-5 max-w-3xl text-base leading-8 text-slate-300 md:text-xl">
-              Discover reliable plumbers, electricians, cleaners, mechanics and
-              other professionals near you. Compare services, request quotes,
-              and book with confidence.
-            </p>
+  Your trusted local service marketplace for plumbers, electricians,
+  cleaners, mechanics, drivers, painters, carpenters and more — right
+  in your city or neighbourhood.
+</p>
 
             <div className="mt-6 flex flex-wrap gap-3">
               <button
@@ -490,16 +499,18 @@ export default function Home() {
                   key={s.id}
                   className="overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 shadow-lg transition hover:-translate-y-1 hover:shadow-cyan-500/10"
                 >
-                  <div className="h-52 w-full overflow-hidden bg-slate-800">
-                    <img
-                      src={getServiceImage(s)}
-                      alt={s.title || "service"}
-                      className="h-full w-full object-cover transition duration-300 hover:scale-105"
-                      onError={(e) => {
-                        e.currentTarget.src = "/images/services/default.jpg";
-                      }}
-                    />
-                  </div>
+                   <div className="relative overflow-hidden rounded-3xl border border-cyan-500/20 bg-slate-900/80 p-4">
+  <div className="flex h-40 items-center justify-center overflow-hidden rounded-2xl bg-slate-800">
+    <img
+      src={getServiceImage(s)}
+      alt={s.title || "service"}
+      className="h-32 w-32 object-contain transition duration-500 hover:scale-110"
+      onError={(e) => {
+        e.currentTarget.src = "/images/services/default.jpg";
+      }}
+    />
+  </div>
+</div>
 
                   <div className="p-5">
                     <div className="mb-3 flex items-start justify-between gap-3">

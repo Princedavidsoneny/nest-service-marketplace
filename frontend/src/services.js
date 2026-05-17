@@ -3,7 +3,7 @@
 const API = (
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
-  "http://127.0.0.1:5000"
+  "http://localhost:5000"
 ).replace(/\/+$/, "");
 
 function authHeader() {
@@ -24,46 +24,26 @@ async function parseResponse(res) {
 }
 
 async function request(path, options = {}) {
-  try {
-    const res = await fetch(`${API}${path}`, {
-      ...options,
-      headers: {
-        Accept: "application/json",
-        ...(options.body && !(options.body instanceof FormData)
-          ? { "Content-Type": "application/json" }
-          : {}),
-        ...(options.headers || {}),
-      },
-    });
+  const res = await fetch(`${API}${path}`, {
+    ...options,
+    headers: {
+      Accept: "application/json",
+      ...(options.body && !(options.body instanceof FormData)
+        ? { "Content-Type": "application/json" }
+        : {}),
+      ...(options.headers || {}),
+    },
+  });
 
-    const data = await parseResponse(res);
+  const data = await parseResponse(res);
 
-    if (!res.ok) {
-      throw new Error(
-        data?.error || data?.message || `Request failed (${res.status})`
-      );
-    }
-
-    return data;
-  } catch (error) {
+  if (!res.ok) {
     throw new Error(
-      error?.message || "Network error. Please check if backend is running."
+      data?.error || data?.message || `Request failed (${res.status})`
     );
   }
-}
 
-async function requestWithFallback(paths, options = {}) {
-  let lastError = null;
-
-  for (const path of paths) {
-    try {
-      return await request(path, options);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError || new Error("Request failed");
+  return data;
 }
 
 export async function registerUser(payload) {
@@ -89,9 +69,11 @@ export async function fetchServices(params = {}) {
     if (typeof value === "string") {
       const trimmed = value.trim();
       if (!trimmed) continue;
+
       if (["all", "all categories", "any"].includes(trimmed.toLowerCase())) {
         continue;
       }
+
       clean[key] = trimmed;
     } else {
       clean[key] = value;
@@ -125,21 +107,15 @@ export async function createBooking(payload) {
 }
 
 export async function fetchMyBookings() {
-  return requestWithFallback(
-    ["/bookings/me", "/bookings/my"],
-    {
-      headers: { ...authHeader() },
-    }
-  );
+  return request("/bookings/me", {
+    headers: { ...authHeader() },
+  });
 }
 
 export async function fetchProviderBookings() {
-  return requestWithFallback(
-    ["/bookings/provider", "/provider/bookings"],
-    {
-      headers: { ...authHeader() },
-    }
-  );
+  return request("/bookings/provider", {
+    headers: { ...authHeader() },
+  });
 }
 
 export async function updateBookingStatus(id, status) {
@@ -159,21 +135,15 @@ export async function createQuote(payload) {
 }
 
 export async function fetchMyQuotes() {
-  return requestWithFallback(
-    ["/quotes/my", "/quotes/me"],
-    {
-      headers: { ...authHeader() },
-    }
-  );
+  return request("/quotes/my", {
+    headers: { ...authHeader() },
+  });
 }
 
 export async function fetchProviderQuotes() {
-  return requestWithFallback(
-    ["/provider/quotes", "/quotes/provider"],
-    {
-      headers: { ...authHeader() },
-    }
-  );
+  return request("/provider/quotes", {
+    headers: { ...authHeader() },
+  });
 }
 
 export async function createQuoteOffer(quoteId, payload) {
