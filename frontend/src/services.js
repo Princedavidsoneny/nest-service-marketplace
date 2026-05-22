@@ -37,11 +37,21 @@ async function request(path, options = {}) {
 
   const data = await parseResponse(res);
 
-  if (!res.ok) {
-    throw new Error(
-      data?.error || data?.message || `Request failed (${res.status})`
-    );
+   if (!res.ok) {
+  const message = data?.error || data?.message || `Request failed (${res.status})`;
+
+  if (
+    res.status === 401 ||
+    String(message).toLowerCase().includes("invalid token") ||
+    String(message).toLowerCase().includes("missing token")
+  ) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    window.location.href = "/login";
   }
+
+  throw new Error(message);
+}
 
   return data;
 }

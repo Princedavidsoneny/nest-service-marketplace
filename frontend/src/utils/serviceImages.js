@@ -1,105 +1,94 @@
- export function getServiceImage(service) {
-  const title = String(service?.title || "").toLowerCase();
-  const category = String(service?.category || "").toLowerCase();
-  const description = String(service?.description || "").toLowerCase();
+ const DEFAULT_IMAGE = "/images/services/default.jpg";
 
-  const text = `${title} ${category} ${description}`;
+const SERVICE_IMAGE_RULES = [
+  {
+    image: "/images/services/cleaner.jpg",
+    keywords: ["cleaner", "cleaning", "clean", "housekeeping", "maid"],
+  },
+  {
+    image: "/images/services/electrician.jpg",
+    keywords: ["electrician", "electric", "electrical", "wiring", "wire", "light"],
+  },
+  {
+    image: "/images/services/plumber.jpg",
+    keywords: ["plumber", "plumbing", "tap", "pipe", "water", "sink", "toilet"],
+  },
+  {
+    image: "/images/services/mechanic.jpg",
+    keywords: ["mechanic", "car repair", "vehicle", "auto", "automobile", "engine"],
+  },
+  {
+    image: "/images/services/driver.jpg",
+    keywords: ["driver", "driving", "transport", "chauffeur", "car hire"],
+  },
+  {
+    image: "/images/services/painter.jpg",
+    keywords: ["painter", "painting", "paint", "wall paint"],
+  },
+  {
+    image: "/images/services/carpenter.jpg",
+    keywords: ["carpenter", "carpentry", "wood", "furniture", "cabinet"],
+  },
+  {
+    image: "/images/services/generator.jpg",
+    keywords: ["generator", "gen repair", "generator repair", "gen"],
+  },
+  {
+    image: "/images/services/appliance.jpg",
+    keywords: [
+      "appliance",
+      "fridge",
+      "freezer",
+      "washing machine",
+      "ac repair",
+      "air conditioner",
+      "technician",
+      "repair",
+    ],
+  },
+  {
+    image: "/images/services/moving.jpg",
+    keywords: ["moving", "mover", "relocation", "packing", "delivery"],
+  },
+  {
+    image: "/images/services/labourer.jpg",
+    keywords: ["labourer", "laborer", "labour", "labor", "site worker"],
+  },
+  {
+    image: "/images/services/tiler.jpg",
+    keywords: ["tiler", "tiling", "tiles", "floor tile", "wall tile"],
+  },
+  {
+    image: "/images/services/handyman.jpg",
+    keywords: [
+      "handyman",
+      "handy",
+      "welder",
+      "welding",
+      "iron",
+      "general",
+      "home repairs",
+      "maintenance",
+    ],
+  },
+];
 
-  if (text.includes("cleaner") || text.includes("cleaning")) {
-    return "/images/services/cleaner.jpg";
-  }
+export function getServiceImage(service) {
+  const text = [
+    service?.title,
+    service?.category,
+    service?.description,
+    service?.name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
-  if (text.includes("electric") || text.includes("wiring")) {
-    return "/images/services/electrician.jpg";
-  }
+  const match = SERVICE_IMAGE_RULES.find((rule) =>
+    rule.keywords.some((keyword) => text.includes(keyword))
+  );
 
-  if (
-    text.includes("plumber") ||
-    text.includes("plumbing") ||
-    text.includes("tap")
-  ) {
-    return "/images/services/plumber.jpg";
-  }
-
-  if (
-    text.includes("mechanic") ||
-    text.includes("car repair") ||
-    text.includes("vehicle")
-  ) {
-    return "/images/services/mechanic.jpg";
-  }
-
-  if (
-    text.includes("driver") ||
-    text.includes("driving") ||
-    text.includes("transport")
-  ) {
-    return "/images/services/driver.jpg";
-  }
-
-  if (
-    text.includes("painter") ||
-    text.includes("painting") ||
-    text.includes("paint")
-  ) {
-    return "/images/services/painter.jpg";
-  }
-
-  if (
-    text.includes("carpenter") ||
-    text.includes("wood") ||
-    text.includes("furniture")
-  ) {
-    return "/images/services/carpenter.jpg";
-  }
-
-  if (
-    text.includes("generator") ||
-    text.includes("gen repair")
-  ) {
-    return "/images/services/generator.jpg";
-  }
-
-  if (
-    text.includes("appliance") ||
-    text.includes("fridge") ||
-    text.includes("washing machine")
-  ) {
-    return "/images/services/appliance.jpg";
-  }
-
-  if (
-    text.includes("moving") ||
-    text.includes("mover") ||
-    text.includes("relocation")
-  ) {
-    return "/images/services/moving.jpg";
-  }
-
-  if (
-    text.includes("labourer") ||
-    text.includes("laborer") ||
-    text.includes("labour")
-  ) {
-    return "/images/services/labourer.jpg";
-  }
-
-  if (
-    text.includes("tiler") ||
-    text.includes("tiling") ||
-    text.includes("tiles")
-  ) {
-    return "/images/services/tiler.jpg";
-  }
-
-  if (
-    text.includes("handyman") ||
-    text.includes("handy")
-  ) {
-    return "/images/services/handyman.jpg";
-  }
-
-  return "/images/services/default.jpg";
+  return match?.image || DEFAULT_IMAGE;
 }
 
 export function formatCategory(category) {

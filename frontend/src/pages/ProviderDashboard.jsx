@@ -5,33 +5,18 @@ import {
   uploadServiceImage,
   deleteServiceImage,
 } from "../api/serviceImages";
+import { getServiceImage } from "../utils/serviceImages";
 
 const API_BASE = (
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
-  "http://127.0.0.1:5000"
+  "http://localhost:5000"
 ).replace(/\/+$/, "");
 
 function money(value) {
   const n = Number(value || 0);
   if (!Number.isFinite(n) || n <= 0) return "Negotiable";
   return `₦${n.toLocaleString()}`;
-}
-
-function fallbackServiceImage(service) {
-  const text = `${service?.title || ""} ${service?.category || ""}`.toLowerCase();
-
-  if (text.includes("plumb")) return "/images/services/plumber.jpg";
-  if (text.includes("electric")) return "/images/services/electrician.jpg";
-  if (text.includes("clean")) return "/images/services/cleaner.jpg";
-  if (text.includes("mechanic")) return "/images/services/mechanic.jpg";
-  if (text.includes("labour") || text.includes("labor")) return "/images/services/labourer.jpg";
-  if (text.includes("tile")) return "/images/services/tiler.jpg";
-  if (text.includes("paint")) return "/images/services/painter.jpg";
-  if (text.includes("carpent")) return "/images/services/carpenter.jpg";
-  if (text.includes("move")) return "/images/services/moving.jpg";
-
-  return "/images/services/default.jpg";
 }
 
 function publicImageUrl(value) {
@@ -88,7 +73,7 @@ function normalizeService(service) {
     city: service?.city || "N/A",
     priceFrom: Number(service?.priceFrom || service?.price_from || 0) || 0,
     description: service?.description || "No description provided.",
-    coverImage: service?.coverImage || "",
+    coverImage: service?.coverImage || service?.primaryImage || "",
     images: Array.isArray(service?.images) ? service.images : [],
   };
 }
@@ -121,13 +106,17 @@ export default function ProviderDashboard() {
     "electrician",
     "cleaner",
     "mechanic",
-    "labourer",
-    "tiler",
+    "driver",
     "painter",
     "carpenter",
     "generator repair",
     "appliance repair",
     "moving service",
+    "labourer",
+    "tiler",
+    "welder",
+    "technician",
+    "chef",
     "general",
     "other",
   ];
@@ -136,6 +125,7 @@ export default function ProviderDashboard() {
     try {
       const data = await fetchServiceImages(serviceId);
       const images = Array.isArray(data?.images) ? data.images : [];
+
       setServiceImageMap((prev) => ({
         ...prev,
         [serviceId]: images,
@@ -181,10 +171,12 @@ export default function ProviderDashboard() {
 
   useEffect(() => {
     if (!msg && !galleryMsg) return;
+
     const t = setTimeout(() => {
       setMsg("");
       setGalleryMsg("");
     }, 2500);
+
     return () => clearTimeout(t);
   }, [msg, galleryMsg]);
 
@@ -279,6 +271,7 @@ export default function ProviderDashboard() {
       setGalleryMsg("");
 
       const file = imageFiles[serviceId];
+
       if (!file) {
         setGalleryError("Please choose an image first.");
         return;
@@ -335,68 +328,88 @@ export default function ProviderDashboard() {
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-10 grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
           <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-white md:text-5xl">
+            <div className="mb-4 inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200">
+              Manage your local service business
+            </div>
+
+            <h1 className="text-4xl font-black tracking-tight text-white md:text-5xl">
               Provider Dashboard
             </h1>
-            <p className="mt-3 max-w-2xl text-base text-slate-300 md:text-lg">
-              Create and manage your service listings, upload service photos, set your pricing, and make your business visible to customers searching for trusted local professionals.
+
+            <p className="mt-3 max-w-2xl text-base leading-8 text-slate-300 md:text-lg">
+              Create service listings, set your price, upload photos, and make
+              your business visible to customers looking for trusted local
+              professionals.
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div className="rounded-2xl border border-cyan-400/10 bg-white/5 px-4 py-3">
                 <div className="text-xs uppercase tracking-wide text-slate-400">
                   My services
                 </div>
-                <div className="mt-1 text-2xl font-bold text-white">
+                <div className="mt-1 text-2xl font-black text-white">
                   {stats.total}
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div className="rounded-2xl border border-cyan-400/10 bg-white/5 px-4 py-3">
                 <div className="text-xs uppercase tracking-wide text-slate-400">
                   With city
                 </div>
-                <div className="mt-1 text-2xl font-bold text-white">
+                <div className="mt-1 text-2xl font-black text-white">
                   {stats.withCity}
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div className="rounded-2xl border border-cyan-400/10 bg-white/5 px-4 py-3">
                 <div className="text-xs uppercase tracking-wide text-slate-400">
                   With price
                 </div>
-                <div className="mt-1 text-2xl font-bold text-white">
+                <div className="mt-1 text-2xl font-black text-white">
                   {stats.priced}
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div className="rounded-2xl border border-cyan-400/10 bg-white/5 px-4 py-3">
                 <div className="text-xs uppercase tracking-wide text-slate-400">
                   Categories
                 </div>
-                <div className="mt-1 text-2xl font-bold text-white">
+                <div className="mt-1 text-2xl font-black text-white">
                   {stats.categories}
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-2xl">
-            <img
-              src="/images/hero-handyman.jpg"
-              alt="Provider dashboard"
-              className="h-full max-h-[340px] w-full object-cover"
-              onError={(e) => {
-                e.currentTarget.src = "/images/services/default.jpg";
-              }}
-            />
+          <div className="relative overflow-hidden rounded-[32px] border border-cyan-400/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/20">
+            <div className="flex h-[260px] items-center justify-center rounded-[28px] bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-8">
+              <img
+                src="/images/services/handyman.jpg"
+                alt="Provider dashboard"
+                className="h-full max-h-[220px] w-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.src = "/images/services/default.jpg";
+                }}
+              />
+            </div>
+
+            <div className="absolute bottom-6 left-6 right-6 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 backdrop-blur">
+              <div className="text-sm font-semibold text-cyan-200">
+                Build your service profile
+              </div>
+              <div className="text-xs text-slate-400">
+                Add services, prices, images, and locations.
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur">
+          <div className="rounded-3xl border border-cyan-400/10 bg-white/5 p-6 shadow-xl backdrop-blur">
             <div className="mb-5">
-              <h2 className="text-2xl font-bold text-white">Create a Service</h2>
+              <h2 className="text-2xl font-bold text-white">
+                Create a Service
+              </h2>
               <p className="mt-1 text-sm text-slate-400">
                 Add a service customers can book directly or request a quote for.
               </p>
@@ -419,6 +432,7 @@ export default function ProviderDashboard() {
                 <label className="mb-2 block text-sm text-slate-300">
                   Category
                 </label>
+
                 <select
                   value={form.category}
                   onChange={(e) => {
@@ -445,8 +459,10 @@ export default function ProviderDashboard() {
                     </label>
                     <input
                       value={form.customCategory}
-                      onChange={(e) => updateField("customCategory", e.target.value)}
-                      placeholder="e.g. driver"
+                      onChange={(e) =>
+                        updateField("customCategory", e.target.value)
+                      }
+                      placeholder="e.g. barber, chef, photographer"
                       className="w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60"
                     />
                   </div>
@@ -454,7 +470,9 @@ export default function ProviderDashboard() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-slate-300">City</label>
+                <label className="mb-2 block text-sm text-slate-300">
+                  City
+                </label>
                 <input
                   value={form.city}
                   onChange={(e) => updateField("city", e.target.value)}
@@ -523,7 +541,7 @@ export default function ProviderDashboard() {
             </form>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur">
+          <div className="rounded-3xl border border-cyan-400/10 bg-white/5 p-6 shadow-xl backdrop-blur">
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-bold text-white">My Services</h2>
@@ -570,26 +588,28 @@ export default function ProviderDashboard() {
               <div className="grid gap-4 md:grid-cols-2">
                 {services.map((service) => {
                   const uploadedImages = serviceImageMap[service.id] || [];
-                  const cover =
-                    uploadedImages[0]?.imageUrl
-                      ? publicImageUrl(uploadedImages[0].imageUrl)
-                      : service.coverImage
-                      ? publicImageUrl(service.coverImage)
-                      : fallbackServiceImage(service);
+                  const cover = uploadedImages[0]?.imageUrl
+                    ? publicImageUrl(uploadedImages[0].imageUrl)
+                    : service.coverImage
+                    ? publicImageUrl(service.coverImage)
+                    : getServiceImage(service);
 
                   return (
                     <div
                       key={service.id}
                       className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/50 shadow-lg"
                     >
-                      <img
-                        src={cover}
-                        alt={service.title}
-                        className="h-40 w-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.src = "/images/services/default.jpg";
-                        }}
-                      />
+                      <div className="flex h-40 items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-5">
+                        <img
+                          src={cover}
+                          alt={service.title}
+                          className="h-28 w-28 object-contain"
+                          onError={(e) => {
+                            e.currentTarget.src =
+                              "/images/services/default.jpg";
+                          }}
+                        />
+                      </div>
 
                       <div className="p-4">
                         <div className="flex items-start justify-between gap-3">
@@ -616,7 +636,7 @@ export default function ProviderDashboard() {
                             Service ID: {service.id}
                           </span>
 
-                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-emerald-300">
                             Active
                           </span>
                         </div>
@@ -630,7 +650,10 @@ export default function ProviderDashboard() {
                             type="file"
                             accept="image/*"
                             onChange={(e) =>
-                              handleImageFileChange(service.id, e.target.files?.[0] || null)
+                              handleImageFileChange(
+                                service.id,
+                                e.target.files?.[0] || null
+                              )
                             }
                             className="w-full rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-slate-300"
                           />
@@ -641,7 +664,9 @@ export default function ProviderDashboard() {
                             disabled={uploadingFor === service.id}
                             className="mt-3 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60"
                           >
-                            {uploadingFor === service.id ? "Uploading..." : "Upload Image"}
+                            {uploadingFor === service.id
+                              ? "Uploading..."
+                              : "Upload Image"}
                           </button>
 
                           {uploadedImages.length > 0 ? (

@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import RequireAdmin from "./components/RequireAdmin";
 import RequireAuth from "./components/RequireAuth";
 import RequireProvider from "./components/RequireProvider";
+import VerifyEmail from "./pages/VerifyEmail";
 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="privacy" element={<PrivacyPage />} />
         <Route path="terms" element={<Terms />} />
         <Route path="contact" element={<Contact />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
 
         <Route
           path="my-bookings"
