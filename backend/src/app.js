@@ -14,6 +14,8 @@ import quotesRoutes from "./routes/quotes.routes.js";
 import messagesRoutes from "./routes/messages.routes.js";
 import payoutsRoutes from "./routes/payouts.routes.js";
 import serviceImagesRoutes from "./routes/serviceImages.routes.js";
+import demandRoutes from "./routes/demand.routes.js";
+import walletRoutes from "./routes/wallet.routes.js";
 
 import { uploadsDir } from "./middleware/upload.js";
 
@@ -35,6 +37,8 @@ app.use("/", quotesRoutes);
 app.use("/", messagesRoutes);
 app.use("/", payoutsRoutes);
 app.use("/", serviceImagesRoutes);
+app.use(demandRoutes);
+app.use(walletRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

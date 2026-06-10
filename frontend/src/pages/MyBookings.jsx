@@ -1,6 +1,10 @@
  import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchMyBookings, initPayment } from "../services";
+import {
+  fetchMyBookings,
+  initPayment,
+  confirmBookingCompleted,
+} from "../services";
 
 function money(v) {
   const n = Number(v || 0);
@@ -11,16 +15,20 @@ function money(v) {
 function badgeTone(status) {
   const s = String(status || "").toLowerCase();
 
-  if (s === "completed") {
-    return "border-green-500/30 bg-green-500/15 text-green-300";
-  }
+  if (s === "completed") return "border-green-500/30 bg-green-500/15 text-green-300";
+  if (s === "accepted") return "border-cyan-500/30 bg-cyan-500/15 text-cyan-300";
+  if (s === "rejected") return "border-red-500/30 bg-red-500/15 text-red-300";
 
-  if (s === "accepted") {
-    return "border-cyan-500/30 bg-cyan-500/15 text-cyan-300";
-  }
+  return "border-white/10 bg-white/5 text-slate-300";
+}
 
-  if (s === "rejected") {
-    return "border-red-500/30 bg-red-500/15 text-red-300";
+function escrowTone(status) {
+  const s = String(status || "").toLowerCase();
+
+  if (s === "held") return "border-yellow-500/30 bg-yellow-500/15 text-yellow-300";
+  if (s === "released") return "border-emerald-500/30 bg-emerald-500/15 text-emerald-300";
+  if (s === "waiting_customer_confirmation") {
+    return "border-blue-500/30 bg-blue-500/15 text-blue-300";
   }
 
   return "border-white/10 bg-white/5 text-slate-300";
@@ -30,9 +38,7 @@ function formatDateValue(value) {
   if (!value) return "N/A";
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
+  if (Number.isNaN(date.getTime())) return String(value);
 
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
@@ -48,9 +54,7 @@ function dedupeRows(list = []) {
 
   for (const item of list) {
     if (!item || item.id == null) continue;
-    if (!map.has(item.id)) {
-      map.set(item.id, item);
-    }
+    if (!map.has(item.id)) map.set(item.id, item);
   }
 
   return Array.from(map.values());
@@ -58,12 +62,14 @@ function dedupeRows(list = []) {
 
 function normalizeBooking(b) {
   const status = String(b?.status || "pending").toLowerCase();
-  const paid = Number(b?.paid || 0) === 1;
+  const escrowStatus = String(b?.escrowStatus || "unpaid").toLowerCase();
+  const paid = b?.paid === true || Number(b?.paid || 0) === 1;
   const amount = Number(b?.amount || b?.price || b?.price_from || b?.priceFrom || 0);
 
   return {
     ...b,
     status,
+    escrowStatus,
     paid,
     amount,
     title: b.title || b.serviceTitle || b.service_name || "Service Booking",
@@ -79,9 +85,14 @@ function normalizeBooking(b) {
       b.date || b.bookingDate || b.scheduledDate || b.preferredDate || b.createdAt
     ),
     displayPrice: money(amount),
-    canPay: !paid && amount > 0,
+    canPay: !paid && amount > 0 && ["accepted", "pending"].includes(status),
+    canConfirmWork:
+      paid &&
+      (escrowStatus === "held" || escrowStatus === "waiting_customer_confirmation") &&
+      escrowStatus !== "released",
     canReview:
       status === "completed" &&
+      escrowStatus === "released" &&
       Number(b?.reviewSubmitted || 0) !== 1,
   };
 }
@@ -92,26 +103,32 @@ function readableStatus(status) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function bookingSummary(status, paid) {
-  if (status === "completed" && paid) {
-    return "Completed and paid";
+function readableEscrow(status) {
+  const s = String(status || "unpaid").toLowerCase();
+
+  if (s === "waiting_customer_confirmation") return "Waiting for your confirmation";
+  if (s === "held") return "Payment held by Nest";
+  if (s === "released") return "Payment released";
+  if (s === "unpaid") return "Unpaid";
+
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function bookingSummary(status, paid, escrowStatus) {
+  if (status === "completed" && escrowStatus === "released") {
+    return "Completed and payment released";
   }
 
-  if (status === "completed") {
-    return "Completed";
+  if (status === "completed" && escrowStatus === "waiting_customer_confirmation") {
+    return "Provider says work is completed. Please confirm.";
   }
 
-  if (status === "accepted" && paid) {
-    return "Accepted and paid";
-  }
-
-  if (status === "accepted") {
-    return "Accepted by provider";
-  }
-
-  if (status === "rejected") {
-    return "Rejected by provider";
-  }
+  if (escrowStatus === "held") return "Accepted and payment secured";
+  if (status === "completed" && paid) return "Completed and paid";
+  if (status === "completed") return "Completed";
+  if (status === "accepted" && paid) return "Accepted and paid";
+  if (status === "accepted") return "Accepted by provider";
+  if (status === "rejected") return "Rejected by provider";
 
   return "Awaiting provider response";
 }
@@ -122,6 +139,7 @@ export default function MyBookings() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [payingId, setPayingId] = useState(null);
+  const [confirmingId, setConfirmingId] = useState(null);
   const [err, setErr] = useState("");
   const [toast, setToast] = useState("");
 
@@ -132,9 +150,7 @@ export default function MyBookings() {
 
       const data = await fetchMyBookings();
       const list = Array.isArray(data) ? data : data?.rows || [];
-      const cleaned = dedupeRows(list).map(normalizeBooking);
-
-      setRows(cleaned);
+      setRows(dedupeRows(list).map(normalizeBooking));
     } catch (e) {
       setErr(e?.message || "Failed to load bookings");
       setRows([]);
@@ -150,7 +166,7 @@ export default function MyBookings() {
   useEffect(() => {
     if (!toast) return;
 
-    const t = setTimeout(() => setToast(""), 2500);
+    const t = setTimeout(() => setToast(""), 3000);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -181,6 +197,22 @@ export default function MyBookings() {
       setErr(e?.message || "Failed to start payment");
     } finally {
       setPayingId(null);
+    }
+  }
+
+  async function handleConfirmWorkDone(booking) {
+    try {
+      setErr("");
+      setConfirmingId(booking.id);
+
+      const data = await confirmBookingCompleted(booking.id);
+
+      setToast(data?.message || "Work confirmed and payment released.");
+      await load();
+    } catch (e) {
+      setErr(e?.message || "Failed to confirm work done");
+    } finally {
+      setConfirmingId(null);
     }
   }
 
@@ -226,7 +258,8 @@ export default function MyBookings() {
           <div>
             <h1 className="text-3xl font-extrabold text-white">My Bookings</h1>
             <p className="mt-2 text-slate-300">
-              Track booking progress, pay securely, chat with providers, and leave reviews after completed jobs.
+              Track booking progress, pay securely, confirm completed work, chat
+              with providers, and leave reviews.
             </p>
           </div>
 
@@ -253,7 +286,8 @@ export default function MyBookings() {
           <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-300">
             <div className="text-lg font-semibold text-white">No bookings yet</div>
             <p className="mt-2 text-sm text-slate-400">
-              Browse available services on the home page and make your first booking.
+              Browse available services on the home page or create a service
+              request.
             </p>
             <button
               type="button"
@@ -273,9 +307,7 @@ export default function MyBookings() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-3">
-                      <h2 className="text-2xl font-bold text-white">
-                        {b.title}
-                      </h2>
+                      <h2 className="text-2xl font-bold text-white">{b.title}</h2>
 
                       <div
                         className={`rounded-full border px-3 py-1 text-sm font-semibold ${badgeTone(
@@ -283,6 +315,14 @@ export default function MyBookings() {
                         )}`}
                       >
                         {readableStatus(b.status)}
+                      </div>
+
+                      <div
+                        className={`rounded-full border px-3 py-1 text-sm font-semibold ${escrowTone(
+                          b.escrowStatus
+                        )}`}
+                      >
+                        {readableEscrow(b.escrowStatus)}
                       </div>
 
                       {b.paid ? (
@@ -313,13 +353,20 @@ export default function MyBookings() {
                       </div>
                       <div>
                         <span className="text-slate-400">Summary:</span>{" "}
-                        {bookingSummary(b.status, b.paid)}
+                        {bookingSummary(b.status, b.paid, b.escrowStatus)}
                       </div>
                     </div>
 
+                    {b.address ? (
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
+                        <span className="text-slate-400">Address:</span>{" "}
+                        {b.address}
+                      </div>
+                    ) : null}
+
                     <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
                       <span className="text-slate-400">Note:</span>{" "}
-                      {b.note || "No note provided."}
+                      {b.description || b.note || "No note provided."}
                     </div>
                   </div>
                 </div>
@@ -333,6 +380,19 @@ export default function MyBookings() {
                       className="rounded-2xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60"
                     >
                       {payingId === b.id ? "Starting payment..." : "Pay"}
+                    </button>
+                  ) : null}
+
+                  {b.canConfirmWork ? (
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmWorkDone(b)}
+                      disabled={confirmingId === b.id}
+                      className="rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60"
+                    >
+                      {confirmingId === b.id
+                        ? "Confirming..."
+                        : "Confirm Work Done"}
                     </button>
                   ) : null}
 
@@ -354,13 +414,15 @@ export default function MyBookings() {
                     </button>
                   ) : null}
 
-                  <button
-                    type="button"
-                    onClick={() => nav(`/provider/${b.providerId}`)}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-semibold text-white transition hover:bg-white/10"
-                  >
-                    View Provider
-                  </button>
+                  {b.providerId ? (
+                    <button
+                      type="button"
+                      onClick={() => nav(`/provider/${b.providerId}`)}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-semibold text-white transition hover:bg-white/10"
+                    >
+                      View Provider
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))}

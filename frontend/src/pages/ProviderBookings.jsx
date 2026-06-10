@@ -7,9 +7,7 @@ function formatDateValue(value) {
   if (!value) return "N/A";
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
+  if (Number.isNaN(date.getTime())) return String(value);
 
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
@@ -25,9 +23,7 @@ function dedupeRows(list = []) {
 
   for (const item of list) {
     if (!item || item.id == null) continue;
-    if (!map.has(item.id)) {
-      map.set(item.id, item);
-    }
+    if (!map.has(item.id)) map.set(item.id, item);
   }
 
   return Array.from(map.values());
@@ -35,13 +31,13 @@ function dedupeRows(list = []) {
 
 function normalizeBooking(b) {
   const status = String(b?.status || "pending").toLowerCase().trim();
-  const paid = Number(b?.paid || 0) === 1;
+  const paid = b?.paid === true || Number(b?.paid || 0) === 1;
 
   return {
     ...b,
     status,
     paid,
-    title: b?.title || b?.serviceTitle || b?.service_name || "Service",
+    title: b?.title || b?.serviceTitle || b?.service_name || "Service Booking",
     city:
       b?.city ||
       b?.serviceCity ||
@@ -50,6 +46,11 @@ function normalizeBooking(b) {
       b?.customerCity ||
       "N/A",
     category: b?.category || b?.serviceCategory || "N/A",
+    address: b?.address || "",
+    description: b?.description || b?.note || "",
+    customerName: b?.customerName || b?.customer?.name || "Customer",
+    customerEmail: b?.customerEmail || b?.customer?.email || "",
+    customerPhone: b?.customerPhone || b?.customer?.phone || "",
     displayDate: formatDateValue(
       b?.date ||
         b?.bookingDate ||
@@ -59,25 +60,14 @@ function normalizeBooking(b) {
         b?.created_at
     ),
     amount:
-      Number(
-        b?.amount || b?.price || b?.price_from || b?.priceFrom || 0
-      ) || 0,
+      Number(b?.amount || b?.price || b?.price_from || b?.priceFrom || 0) || 0,
   };
 }
 
 function badgeTone(status) {
-  if (status === "completed") {
-    return "border-green-500/30 bg-green-500/15 text-green-300";
-  }
-
-  if (status === "accepted") {
-    return "border-cyan-500/30 bg-cyan-500/15 text-cyan-300";
-  }
-
-  if (status === "rejected") {
-    return "border-red-500/30 bg-red-500/15 text-red-300";
-  }
-
+  if (status === "completed") return "border-green-500/30 bg-green-500/15 text-green-300";
+  if (status === "accepted") return "border-cyan-500/30 bg-cyan-500/15 text-cyan-300";
+  if (status === "rejected") return "border-red-500/30 bg-red-500/15 text-red-300";
   return "border-white/10 bg-white/5 text-slate-300";
 }
 
@@ -192,30 +182,22 @@ export default function ProviderBookings() {
     <div className="mx-auto max-w-6xl px-4 py-8 text-white">
       <div className="mb-8 grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">
-            Total bookings
-          </div>
+          <div className="text-xs uppercase tracking-wide text-slate-400">Total bookings</div>
           <div className="mt-2 text-2xl font-bold text-white">{stats.total}</div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">
-            Pending
-          </div>
+          <div className="text-xs uppercase tracking-wide text-slate-400">Pending</div>
           <div className="mt-2 text-2xl font-bold text-white">{stats.pending}</div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">
-            Accepted
-          </div>
+          <div className="text-xs uppercase tracking-wide text-slate-400">Accepted</div>
           <div className="mt-2 text-2xl font-bold text-white">{stats.accepted}</div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">
-            Completed
-          </div>
+          <div className="text-xs uppercase tracking-wide text-slate-400">Completed</div>
           <div className="mt-2 text-2xl font-bold text-white">{stats.completed}</div>
         </div>
       </div>
@@ -278,9 +260,7 @@ export default function ProviderBookings() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-3">
-                      <h2 className="text-2xl font-bold text-white">
-                        {b.title}
-                      </h2>
+                      <h2 className="text-2xl font-bold text-white">{b.title}</h2>
 
                       <span
                         className={`rounded-full border px-3 py-1 text-sm font-semibold ${badgeTone(
@@ -324,17 +304,36 @@ export default function ProviderBookings() {
                       </div>
 
                       <div>
-                        <span className="text-slate-400">Customer ID:</span>{" "}
-                        <span className="font-medium text-white">
-                          {b.customerId || b.customer_id || "N/A"}
-                        </span>
+                        <span className="text-slate-400">Customer:</span>{" "}
+                        <span className="font-medium text-white">{b.customerName}</span>
                       </div>
+
+                      {b.customerEmail ? (
+                        <div>
+                          <span className="text-slate-400">Email:</span>{" "}
+                          <span className="font-medium text-white">{b.customerEmail}</span>
+                        </div>
+                      ) : null}
+
+                      {b.customerPhone ? (
+                        <div>
+                          <span className="text-slate-400">Phone:</span>{" "}
+                          <span className="font-medium text-white">{b.customerPhone}</span>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
                       <span className="text-slate-400">Note:</span>{" "}
-                      {b.note || "No note provided."}
+                      {b.description || b.note || "No note provided."}
                     </div>
+
+                    {b.address ? (
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
+                        <span className="text-slate-400">Address:</span>{" "}
+                        {b.address}
+                      </div>
+                    ) : null}
 
                     {b.status === "pending" ? (
                       <div className="mt-3 text-xs text-slate-400">

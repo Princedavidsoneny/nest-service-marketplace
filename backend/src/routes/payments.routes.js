@@ -6,9 +6,19 @@ import { requireEnv } from "../utils/env.js";
 
 const router = express.Router();
 
+function calculateFees(amount, percent = 10) {
+  const safeAmount = Number(amount || 0);
+  const safePercent = Number(percent || 10);
+
+  const platformFee = Math.round((safeAmount * safePercent) / 100);
+  const providerShare = safeAmount - platformFee;
+
+  return { platformFee, providerShare };
+}
+
 router.post("/payments/init", authRequired, async (req, res) => {
   try {
-    const bookingId = Number(req.body.bookingId || req.body.booking_id);
+    const bookingId = Number(req.body?.bookingId || req.body?.booking_id);
 
     if (!bookingId) {
       return res.status(400).json({ error: "bookingId required" });
@@ -17,6 +27,15 @@ router.post("/payments/init", authRequired, async (req, res) => {
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
       include: {
+        provider: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            paystackSubaccountCode: true,
+            platformSplitPercent: true,
+          },
+        },
         service: {
           include: {
             provider: {
@@ -42,13 +61,17 @@ router.post("/payments/init", authRequired, async (req, res) => {
     }
 
     if (booking.paid === true) {
-      return res.json({ alreadyPaid: true });
+      return res.json({
+        alreadyPaid: true,
+        escrowStatus: booking.escrowStatus || "held",
+      });
     }
 
-    const provider = booking.service?.provider;
-    if (!provider?.paystackSubaccountCode) {
+    const provider = booking.provider || booking.service?.provider;
+
+    if (!provider) {
       return res.status(400).json({
-        error: "Provider payout setup is not completed yet",
+        error: "Provider not found for this booking",
       });
     }
 
@@ -58,13 +81,23 @@ router.post("/payments/init", authRequired, async (req, res) => {
       return res.status(400).json({ error: "Booking has no price" });
     }
 
+    if (!req.user.email || !String(req.user.email).includes("@")) {
+      return res.status(400).json({ error: "Customer email is invalid" });
+    }
+
     const secret = requireEnv("PAYSTACK_SECRET_KEY");
     const appUrl = requireEnv("APP_URL");
-    const reference = `OWF_${bookingId}_${Date.now()}`;
 
-    const platformPercent = Number(provider.platformSplitPercent || process.env.PAYSTACK_PLATFORM_PERCENT || 10);
-    const platformFee = Math.round((amountNaira * platformPercent) / 100);
-    const providerShare = amountNaira - platformFee;
+    const reference = `NEST_${bookingId}_${Date.now()}`;
+
+    const platformPercent = Number(
+      provider.platformSplitPercent || process.env.PAYSTACK_PLATFORM_PERCENT || 10
+    );
+
+    const { platformFee, providerShare } = calculateFees(
+      amountNaira,
+      platformPercent
+    );
 
     await prisma.payment.upsert({
       where: { bookingId },
@@ -76,7 +109,7 @@ router.post("/payments/init", authRequired, async (req, res) => {
         status: "initialized",
         platformFee,
         providerShare,
-        subaccountCode: provider.paystackSubaccountCode,
+        subaccountCode: provider.paystackSubaccountCode || null,
       },
       create: {
         bookingId,
@@ -87,15 +120,11 @@ router.post("/payments/init", authRequired, async (req, res) => {
         status: "initialized",
         platformFee,
         providerShare,
-        subaccountCode: provider.paystackSubaccountCode,
+        subaccountCode: provider.paystackSubaccountCode || null,
       },
     });
 
     const callbackUrl = `${appUrl}/pay/verify?reference=${reference}`;
-
-    if (!req.user.email || !String(req.user.email).includes("@")) {
-      return res.status(400).json({ error: "Customer email is invalid" });
-    }
 
     const response = await axios.post(
       "https://api.paystack.co/transaction/initialize",
@@ -105,11 +134,11 @@ router.post("/payments/init", authRequired, async (req, res) => {
         reference,
         callback_url: callbackUrl,
         currency: "NGN",
-        subaccount: provider.paystackSubaccountCode,
       },
       {
         headers: {
           Authorization: `Bearer ${secret}`,
+          "Content-Type": "application/json",
         },
       }
     );
@@ -118,11 +147,13 @@ router.post("/payments/init", authRequired, async (req, res) => {
       reference,
       access_code: response.data?.data?.access_code,
       authorization_url: response.data?.data?.authorization_url,
-      providerShare,
       platformFee,
+      providerShare,
+      escrowStatus: "unpaid",
     });
   } catch (error) {
     console.error("POST /payments/init error:", error.response?.data || error.message);
+
     return res.status(500).json({
       error: error.response?.data?.message || error.message || "Paystack init failed",
     });
@@ -133,13 +164,20 @@ router.get("/payments/verify/:reference", authRequired, async (req, res) => {
   try {
     const reference = req.params.reference;
 
+    if (!reference) {
+      return res.status(400).json({ error: "Payment reference required" });
+    }
+
     const payment = await prisma.payment.findUnique({
       where: { reference },
       select: {
         id: true,
         bookingId: true,
         customerId: true,
+        providerId: true,
         reference: true,
+        platformFee: true,
+        providerShare: true,
       },
     });
 
@@ -170,9 +208,25 @@ router.get("/payments/verify/:reference", authRequired, async (req, res) => {
           where: { reference },
           data: { status: "success" },
         }),
+
         prisma.booking.update({
           where: { id: payment.bookingId },
-          data: { paid: true },
+          data: {
+            paid: true,
+            escrowStatus: "held",
+            platformFee: payment.platformFee,
+            providerEarning: payment.providerShare,
+          },
+        }),
+
+        prisma.notification.create({
+          data: {
+            userId: payment.providerId,
+            type: "payment_held",
+            title: "Payment secured",
+            message: "Customer payment has been received and is being held by Nest.",
+            refId: payment.bookingId,
+          },
         }),
       ]);
     } else {
@@ -182,12 +236,18 @@ router.get("/payments/verify/:reference", authRequired, async (req, res) => {
       });
     }
 
-    return res.json({ ok: true, status, reference });
+    return res.json({
+      ok: true,
+      status,
+      reference,
+      escrowStatus: status === "success" ? "held" : "unpaid",
+    });
   } catch (error) {
     console.error(
       "GET /payments/verify/:reference error:",
       error.response?.data || error.message
     );
+
     return res.status(500).json({ error: "Verify failed" });
   }
 });

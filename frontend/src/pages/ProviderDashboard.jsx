@@ -79,6 +79,7 @@ function normalizeService(service) {
 }
 
 export default function ProviderDashboard() {
+  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -341,6 +342,16 @@ export default function ProviderDashboard() {
               your business visible to customers looking for trusted local
               professionals.
             </p>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+  <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200">
+    Provider Tag: {currentUser.providerTag || "Not assigned"}
+  </span>
+
+  <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200">
+    Category: {currentUser.serviceCategory || "General"}
+  </span>
+</div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-2xl border border-cyan-400/10 bg-white/5 px-4 py-3">

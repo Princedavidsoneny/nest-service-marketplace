@@ -67,6 +67,50 @@ function validateEmail(email) {
   return "";
 }
 
+function generateProviderTag(role, serviceCategory) {
+  if (role !== "provider") return null;
+
+  const prefixMap = {
+    plumber: "PLM",
+    driver: "DRV",
+    electrician: "ELE",
+    cleaner: "CLN",
+    painter: "PNT",
+    carpenter: "CAR",
+    generator: "GEN",
+    appliance: "APP",
+    moving: "MOV",
+  };
+
+  const normalizedCategory = String(serviceCategory || "")
+    .trim()
+    .toLowerCase();
+
+  const prefix = prefixMap[normalizedCategory] || "PRO";
+  const randomNumber = Math.floor(1000 + Math.random() * 9000);
+
+  return `${prefix}-${randomNumber}`;
+}
+
+async function createUniqueProviderTag(role, serviceCategory) {
+  if (role !== "provider") return null;
+
+  let providerTag = generateProviderTag(role, serviceCategory);
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const existing = await prisma.user.findUnique({
+      where: { providerTag },
+      select: { id: true },
+    });
+
+    if (!existing) return providerTag;
+
+    providerTag = generateProviderTag(role, serviceCategory);
+  }
+
+  return `PRO-${Date.now()}`;
+}
+
 function signToken(user) {
   return jwt.sign(
     {
@@ -74,6 +118,8 @@ function signToken(user) {
       email: user.email,
       role: user.role,
       name: user.name,
+      providerTag: user.providerTag || null,
+      serviceCategory: user.serviceCategory || null,
     },
     JWT_SECRET,
     { expiresIn: "7d" }
@@ -99,18 +145,67 @@ function safeUserPayload(user) {
     bio: user.bio || "",
     profileImage: user.profileImage || "",
     isVerified: Boolean(user.isVerified),
+    providerTag: user.providerTag || null,
+    serviceCategory: user.serviceCategory || null,
+    phone: user.phone || "",
+    address: user.address || "",
+    city: user.city || "",
+    latitude: user.latitude ?? null,
+    longitude: user.longitude ?? null,
   };
+}
+
+async function sendVerificationSafely({ user, verificationUrl, label }) {
+  try {
+    await sendVerificationEmail({
+      to: user.email,
+      name: user.name,
+      verificationUrl,
+    });
+  } catch (emailError) {
+    console.error(`${label} email failed:`, emailError);
+  }
 }
 
 router.post("/auth/register", async (req, res) => {
   try {
-    const { name, email, password, role } = req.body || {};
+    const {
+      name,
+      email,
+      password,
+      role,
+      serviceCategory,
+      phone,
+      address,
+      city,
+      latitude,
+      longitude,
+    } = req.body || {};
 
     const trimmedName = String(name || "").trim();
     const normalizedEmail = String(email || "").trim().toLowerCase();
     const safePassword = String(password || "");
+    const safeRole = String(role || "").trim().toLowerCase();
 
-    if (!trimmedName || !normalizedEmail || !safePassword || !role) {
+    const safeServiceCategory = String(serviceCategory || "")
+      .trim()
+      .toLowerCase();
+
+    const safePhone = String(phone || "").trim();
+    const safeAddress = String(address || "").trim();
+    const safeCity = String(city || "").trim();
+
+    const parsedLatitude =
+      latitude === undefined || latitude === null || latitude === ""
+        ? null
+        : Number(latitude);
+
+    const parsedLongitude =
+      longitude === undefined || longitude === null || longitude === ""
+        ? null
+        : Number(longitude);
+
+    if (!trimmedName || !normalizedEmail || !safePassword || !safeRole) {
       return res.status(400).json({
         error: "name, email, password, role required",
       });
@@ -127,10 +222,27 @@ router.post("/auth/register", async (req, res) => {
       });
     }
 
-    if (!["customer", "provider"].includes(role)) {
+    if (!["customer", "provider"].includes(safeRole)) {
       return res.status(400).json({
         error: "role must be customer or provider",
       });
+    }
+ 
+
+    if (
+      parsedLatitude !== null &&
+      (Number.isNaN(parsedLatitude) || parsedLatitude < -90 || parsedLatitude > 90)
+    ) {
+      return res.status(400).json({ error: "Invalid latitude." });
+    }
+
+    if (
+      parsedLongitude !== null &&
+      (Number.isNaN(parsedLongitude) ||
+        parsedLongitude < -180 ||
+        parsedLongitude > 180)
+    ) {
+      return res.status(400).json({ error: "Invalid longitude." });
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -147,15 +259,29 @@ router.post("/auth/register", async (req, res) => {
     const verificationUrl = `${APP_URL}/verify-email?token=${verificationToken}`;
     const backendVerificationUrl = `${BACKEND_URL}/auth/verify-email?token=${verificationToken}`;
 
+    const providerTag = await createUniqueProviderTag(
+      safeRole,
+      safeServiceCategory
+    );
+
     const user = await prisma.user.create({
       data: {
         name: trimmedName,
         email: normalizedEmail,
         passwordHash,
-        role,
+        role: safeRole,
         isVerified: false,
         verificationToken,
         verificationExpiry: verificationExpiryDate(),
+
+        providerTag,
+        serviceCategory:
+  safeRole === "provider" ? safeServiceCategory || "general" : null,
+        phone: safePhone || null,
+        address: safeAddress || null,
+        city: safeCity || null,
+        latitude: parsedLatitude,
+        longitude: parsedLongitude,
       },
       select: {
         id: true,
@@ -165,32 +291,37 @@ router.post("/auth/register", async (req, res) => {
         bio: true,
         profileImage: true,
         isVerified: true,
+        providerTag: true,
+        serviceCategory: true,
+        phone: true,
+        address: true,
+        city: true,
+        latitude: true,
+        longitude: true,
       },
     });
 
     console.log("\n========================================");
     console.log("NEW NEST USER CREATED");
     console.log("Email:", user.email);
+    console.log("Role:", user.role);
+    console.log("Provider Tag:", user.providerTag || "N/A");
+    console.log("Service Category:", user.serviceCategory || "N/A");
     console.log("FRONTEND VERIFY LINK:");
     console.log(verificationUrl);
     console.log("DIRECT BACKEND VERIFY LINK:");
     console.log(backendVerificationUrl);
     console.log("========================================\n");
 
-    try {
-      await sendVerificationEmail({
-        to: user.email,
-        name: user.name,
-        verificationUrl,
-      });
-    } catch (emailError) {
-      console.error("Verification email failed:", emailError);
-    }
+    await sendVerificationSafely({
+      user,
+      verificationUrl,
+      label: "Verification",
+    });
 
     return res.json({
       user: safeUserPayload(user),
-      message:
-        "Account created. Please check your email to verify your account.",
+      message: "Account created. Please check your email to verify your account.",
       devVerificationLink: verificationUrl,
       devBackendVerificationLink: backendVerificationUrl,
     });
@@ -268,7 +399,7 @@ router.get("/auth/verify-email", async (req, res) => {
     ) {
       return res.status(400).json({
         error:
-          "Verification link has expired. Please register again or request a new link.",
+          "Verification link has expired. Please request a new verification email.",
       });
     }
 
@@ -287,6 +418,13 @@ router.get("/auth/verify-email", async (req, res) => {
         bio: true,
         profileImage: true,
         isVerified: true,
+        providerTag: true,
+        serviceCategory: true,
+        phone: true,
+        address: true,
+        city: true,
+        latitude: true,
+        longitude: true,
       },
     });
 
@@ -297,6 +435,87 @@ router.get("/auth/verify-email", async (req, res) => {
   } catch (error) {
     console.error("Verify email error:", error);
     return res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/auth/resend-verification", async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required." });
+    }
+
+    const emailError = validateEmail(email);
+    if (emailError) {
+      return res.status(400).json({ error: emailError });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ error: "Email already verified." });
+    }
+
+    const verificationToken = createVerificationToken();
+    const verificationUrl = `${APP_URL}/verify-email?token=${verificationToken}`;
+    const backendVerificationUrl = `${BACKEND_URL}/auth/verify-email?token=${verificationToken}`;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        verificationToken,
+        verificationExpiry: verificationExpiryDate(),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        bio: true,
+        profileImage: true,
+        isVerified: true,
+        providerTag: true,
+        serviceCategory: true,
+        phone: true,
+        address: true,
+        city: true,
+        latitude: true,
+        longitude: true,
+      },
+    });
+
+    console.log("\n========================================");
+    console.log("VERIFICATION EMAIL RESENT");
+    console.log("Email:", updatedUser.email);
+    console.log("FRONTEND VERIFY LINK:");
+    console.log(verificationUrl);
+    console.log("DIRECT BACKEND VERIFY LINK:");
+    console.log(backendVerificationUrl);
+    console.log("========================================\n");
+
+    await sendVerificationSafely({
+      user: updatedUser,
+      verificationUrl,
+      label: "Resend verification",
+    });
+
+    return res.json({
+      message: "Verification email sent successfully.",
+      devVerificationLink: verificationUrl,
+      devBackendVerificationLink: backendVerificationUrl,
+    });
+  } catch (error) {
+    console.error("Resend verification error:", error);
+    return res.status(500).json({
+      error: "Failed to resend verification email.",
+    });
   }
 });
 

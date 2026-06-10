@@ -28,19 +28,20 @@ export default function Layout() {
     setMenuOpen(false);
     navigate("/login");
   }
+ const customerLinks = [
+  { to: "/demand-requests", label: "Request Service" },
+  { to: "/my-bookings", label: "My Bookings" },
+  { to: "/my-quotes", label: "My Quotes" },
+];
 
-  const customerLinks = [
-    { to: "/my-bookings", label: "My Bookings" },
-    { to: "/my-quotes", label: "My Quotes" },
-  ];
-
-  const providerLinks = [
-    { to: "/provider", label: "Dashboard" },
-    { to: "/provider/bookings", label: "Bookings" },
-    { to: "/provider/quotes", label: "Quotes" },
-    { to: "/provider-settings", label: "Settings" },
-  ];
-
+   const providerLinks = [
+  { to: "/provider", label: "Dashboard" },
+  { to: "/provider/bookings", label: "Bookings" },
+   { to: "/provider/wallet", label: "Wallet" },
+  { to: "/provider/quotes", label: "Quotes" },
+  { to: "/provider/demands", label: "Service Requests" },
+  { to: "/provider-settings", label: "Settings" },
+];
   const publicLinks = [
     { to: "/privacy", label: "Privacy" },
     { to: "/terms", label: "Terms" },

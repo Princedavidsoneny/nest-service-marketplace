@@ -13,7 +13,6 @@ function authHeader() {
 
 async function parseResponse(res) {
   const text = await res.text();
-
   if (!text) return {};
 
   try {
@@ -37,21 +36,21 @@ async function request(path, options = {}) {
 
   const data = await parseResponse(res);
 
-   if (!res.ok) {
-  const message = data?.error || data?.message || `Request failed (${res.status})`;
+  if (!res.ok) {
+    const message = data?.error || data?.message || `Request failed (${res.status})`;
 
-  if (
-    res.status === 401 ||
-    String(message).toLowerCase().includes("invalid token") ||
-    String(message).toLowerCase().includes("missing token")
-  ) {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    window.location.href = "/login";
+    if (
+      res.status === 401 ||
+      String(message).toLowerCase().includes("invalid token") ||
+      String(message).toLowerCase().includes("missing token")
+    ) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "/login";
+    }
+
+    throw new Error(message);
   }
-
-  throw new Error(message);
-}
 
   return data;
 }
@@ -79,11 +78,7 @@ export async function fetchServices(params = {}) {
     if (typeof value === "string") {
       const trimmed = value.trim();
       if (!trimmed) continue;
-
-      if (["all", "all categories", "any"].includes(trimmed.toLowerCase())) {
-        continue;
-      }
-
+      if (["all", "all categories", "any"].includes(trimmed.toLowerCase())) continue;
       clean[key] = trimmed;
     } else {
       clean[key] = value;
@@ -135,6 +130,15 @@ export async function updateBookingStatus(id, status) {
     body: JSON.stringify({ status }),
   });
 }
+
+ export async function confirmBookingCompleted(id) {
+  return request(`/bookings/${id}/confirm-completed`, {
+    method: "PATCH",
+    headers: { ...authHeader() },
+  });
+}
+
+ 
 
 export async function createQuote(payload) {
   return request("/quotes", {
@@ -228,6 +232,15 @@ export async function fetchMyProviderProfile() {
   });
 }
 
+export async function fetchProviderWallet() {
+  return request("/wallet/me", {
+    headers: { ...authHeader() },
+  });
+}
+
+
+
+
 export async function updateMyProviderProfile(payload) {
   return request("/providers/me", {
     method: "PATCH",
@@ -244,5 +257,41 @@ export async function uploadProviderProfileImage(file) {
     method: "POST",
     headers: { ...authHeader() },
     body: formData,
+  });
+}
+
+export async function createDemandRequest(payload) {
+  return request("/demands", {
+    method: "POST",
+    headers: { ...authHeader() },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchMyDemandRequests() {
+  return request("/demands/mine", {
+    headers: { ...authHeader() },
+  });
+}
+
+export async function fetchProviderDemandRequests() {
+  return request("/demands/provider", {
+    headers: { ...authHeader() },
+  });
+}
+
+export async function createDemandOffer(demandId, payload) {
+  return request(`/demands/${demandId}/offers`, {
+    method: "POST",
+    headers: { ...authHeader() },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function assignDemandProvider(demandId, providerId) {
+  return request(`/demands/${demandId}/assign`, {
+    method: "PATCH",
+    headers: { ...authHeader() },
+    body: JSON.stringify({ providerId }),
   });
 }

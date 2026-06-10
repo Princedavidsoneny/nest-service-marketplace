@@ -12,13 +12,29 @@ const API = (
   "http://127.0.0.1:5000"
 ).replace(/\/+$/, "");
 
+const SERVICE_CATEGORIES = [
+  "plumber",
+  "driver",
+  "electrician",
+  "cleaner",
+  "mechanic",
+  "painter",
+  "carpenter",
+  "generator repair",
+  "appliance repair",
+  "moving service",
+  "labourer",
+  "tiler",
+  "welder",
+  "technician",
+  "chef",
+  "general",
+];
+
 function authHeaders() {
   const token = getToken();
   return token
-    ? {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-      }
+    ? { Accept: "application/json", Authorization: `Bearer ${token}` }
     : { Accept: "application/json" };
 }
 
@@ -98,6 +114,13 @@ export default function ProviderSettings() {
     name: "",
     bio: "",
     profileImage: "",
+    providerTag: "",
+    serviceCategory: "",
+    phone: "",
+    city: "",
+    address: "",
+    latitude: "",
+    longitude: "",
   });
 
   const [payoutForm, setPayoutForm] = useState({
@@ -146,6 +169,13 @@ export default function ProviderSettings() {
           name: provider?.name || "",
           bio: provider?.bio || "",
           profileImage: provider?.profileImage || "",
+          providerTag: provider?.providerTag || "",
+          serviceCategory: provider?.serviceCategory || "",
+          phone: provider?.phone || "",
+          city: provider?.city || "",
+          address: provider?.address || "",
+          latitude: provider?.latitude ?? "",
+          longitude: provider?.longitude ?? "",
         });
 
         setPayoutForm({
@@ -249,11 +279,27 @@ export default function ProviderSettings() {
         name: profileForm.name,
         bio: profileForm.bio,
         profileImage: imageValue,
+        serviceCategory: profileForm.serviceCategory,
+        phone: profileForm.phone,
+        city: profileForm.city,
+        address: profileForm.address,
+        latitude: profileForm.latitude === "" ? null : Number(profileForm.latitude),
+        longitude:
+          profileForm.longitude === "" ? null : Number(profileForm.longitude),
       });
 
       setProfileForm((prev) => ({
         ...prev,
+        name: updated?.name || prev.name,
+        bio: updated?.bio || "",
         profileImage: updated?.profileImage || imageValue || "",
+        providerTag: updated?.providerTag || prev.providerTag,
+        serviceCategory: updated?.serviceCategory || "",
+        phone: updated?.phone || "",
+        city: updated?.city || "",
+        address: updated?.address || "",
+        latitude: updated?.latitude ?? "",
+        longitude: updated?.longitude ?? "",
       }));
 
       setProfileImageFile(null);
@@ -380,7 +426,7 @@ export default function ProviderSettings() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Provider Settings</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Update your public profile and configure payout details for split payments.
+          Update your public profile, service category, location, and payout details.
         </p>
       </div>
 
@@ -400,6 +446,16 @@ export default function ProviderSettings() {
             </div>
           ) : null}
 
+          <div className="mb-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+            <p className="text-sm text-cyan-200">
+              <span className="font-semibold">Provider Tag:</span>{" "}
+              {profileForm.providerTag || "Not assigned"}
+            </p>
+            <p className="mt-2 text-xs text-slate-300">
+              This tag helps customers identify the provider who wins a job.
+            </p>
+          </div>
+
           <form onSubmit={handleProfileSave} className="space-y-4">
             <div>
               <label className="mb-2 block text-sm text-slate-300">Name</label>
@@ -411,6 +467,96 @@ export default function ProviderSettings() {
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
                 placeholder="Provider name"
               />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">
+                Service Category
+              </label>
+              <select
+                name="serviceCategory"
+                value={profileForm.serviceCategory}
+                onChange={onProfileChange}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+              >
+                <option value="">Select your main service category</option>
+                {SERVICE_CATEGORIES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-slate-400">
+                This determines which job requests you receive automatically.
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Phone</label>
+              <input
+                type="text"
+                name="phone"
+                value={profileForm.phone}
+                onChange={onProfileChange}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                placeholder="e.g. 08012345678"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">City</label>
+              <input
+                type="text"
+                name="city"
+                value={profileForm.city}
+                onChange={onProfileChange}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                placeholder="e.g. Owerri"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Address / Area</label>
+              <input
+                type="text"
+                name="address"
+                value={profileForm.address}
+                onChange={onProfileChange}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                placeholder="e.g. World Bank Area"
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">
+                  Latitude optional
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  name="latitude"
+                  value={profileForm.latitude}
+                  onChange={onProfileChange}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                  placeholder="e.g. 5.485"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">
+                  Longitude optional
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  name="longitude"
+                  value={profileForm.longitude}
+                  onChange={onProfileChange}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                  placeholder="e.g. 7.035"
+                />
+              </div>
             </div>
 
             <div>

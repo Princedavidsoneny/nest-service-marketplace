@@ -5,6 +5,7 @@ import RequireAdmin from "./components/RequireAdmin";
 import RequireAuth from "./components/RequireAuth";
 import RequireProvider from "./components/RequireProvider";
 import VerifyEmail from "./pages/VerifyEmail";
+import ResendVerification from "./pages/ResendVerification";
 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
@@ -20,6 +21,9 @@ import AdminUsers from "./pages/AdminUsers";
 import ProviderSettings from "./pages/ProviderSettings";
 import PayVerify from "./pages/PayVerify";
 import ProviderProfile from "./pages/ProviderProfile";
+import DemandRequests from "./pages/DemandRequests";
+import ProviderDemands from "./pages/ProviderDemands";
+import ProviderWallet from "./pages/ProviderWallet";
 
 import PrivacyPage from "./pages/PrivacyPage";
 import Terms from "./pages/Terms";
@@ -37,6 +41,10 @@ export default function App() {
         <Route path="terms" element={<Terms />} />
         <Route path="contact" element={<Contact />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route
+  path="/resend-verification"
+  element={<ResendVerification />}
+/>
 
         <Route
           path="my-bookings"
@@ -55,6 +63,14 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route
+  path="demand-requests"
+  element={
+    <RequireAuth>
+      <DemandRequests />
+    </RequireAuth>
+  }
+/>
 
         <Route
           path="leave-review/:bookingId"
@@ -111,6 +127,21 @@ export default function App() {
             </RequireProvider>
           }
         />
+
+        <Route
+  path="provider/demands"
+  element={
+    <RequireProvider>
+      <ProviderDemands />
+    </RequireProvider>
+  }
+/>
+<Route
+  path="/provider/wallet"
+  element={<ProviderWallet />}
+/>
+
+
 
         <Route
           path="admin/users"

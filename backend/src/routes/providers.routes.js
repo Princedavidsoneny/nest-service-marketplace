@@ -19,6 +19,21 @@ router.get("/providers/me", authRequired, requireRole("provider"), async (req, r
         role: true,
         bio: true,
         profileImage: true,
+        providerTag: true,
+        serviceCategory: true,
+        phone: true,
+        address: true,
+        city: true,
+        latitude: true,
+        longitude: true,
+        bankName: true,
+        bankCode: true,
+        accountNumber: true,
+        accountName: true,
+        payoutBusinessName: true,
+        payoutVerified: true,
+        paystackSubaccountCode: true,
+        platformSplitPercent: true,
         createdAt: true,
       },
     });
@@ -28,13 +43,10 @@ router.get("/providers/me", authRequired, requireRole("provider"), async (req, r
     }
 
     return res.json({
-      id: provider.id,
-      name: provider.name,
-      email: provider.email,
-      role: provider.role,
+      ...provider,
       bio: provider.bio || "",
       profileImage: publicImageUrl(req, provider.profileImage),
-      createdAt: provider.createdAt,
+      payoutCompleted: Boolean(provider.payoutVerified && provider.paystackSubaccountCode),
     });
   } catch (error) {
     console.error("GET /providers/me error:", error);
@@ -44,15 +56,25 @@ router.get("/providers/me", authRequired, requireRole("provider"), async (req, r
 
 router.patch("/providers/me", authRequired, requireRole("provider"), async (req, res) => {
   try {
-    const { name, bio, profileImage } = req.body || {};
+    const {
+      name,
+      bio,
+      profileImage,
+      serviceCategory,
+      phone,
+      address,
+      city,
+      latitude,
+      longitude,
+    } = req.body || {};
 
     const safeName = String(name || "").trim();
-    const safeBio = String(bio || "").trim();
-    const safeProfileImage = normalizeProfileImage(profileImage);
 
     if (!safeName) {
       return res.status(400).json({ error: "Name is required" });
     }
+
+    const safeProfileImage = normalizeProfileImage(profileImage);
 
     if (profileImage && !safeProfileImage) {
       return res.status(400).json({
@@ -60,43 +82,24 @@ router.patch("/providers/me", authRequired, requireRole("provider"), async (req,
       });
     }
 
-    const updated = await prisma.user.updateMany({
-      where: {
-        id: req.user.id,
-        role: "provider",
-      },
+    const updated = await prisma.user.update({
+      where: { id: req.user.id },
       data: {
         name: safeName,
-        bio: safeBio || null,
+        bio: bio ? String(bio).trim() : null,
         profileImage: safeProfileImage || null,
-      },
-    });
-
-    if (!updated.count) {
-      return res.status(404).json({ error: "Provider not found" });
-    }
-
-    const provider = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        bio: true,
-        profileImage: true,
-        createdAt: true,
+        serviceCategory: serviceCategory ? String(serviceCategory).trim().toLowerCase() : null,
+        phone: phone ? String(phone).trim() : null,
+        address: address ? String(address).trim() : null,
+        city: city ? String(city).trim().toLowerCase() : null,
+        latitude: latitude ? Number(latitude) : null,
+        longitude: longitude ? Number(longitude) : null,
       },
     });
 
     return res.json({
-      id: provider.id,
-      name: provider.name,
-      email: provider.email,
-      role: provider.role,
-      bio: provider.bio || "",
-      profileImage: publicImageUrl(req, provider.profileImage),
-      createdAt: provider.createdAt,
+      success: true,
+      provider: updated,
     });
   } catch (error) {
     console.error("PATCH /providers/me error:", error);
@@ -124,6 +127,11 @@ router.get("/providers/:id", async (req, res) => {
         role: true,
         bio: true,
         profileImage: true,
+        providerTag: true,
+        serviceCategory: true,
+        phone: true,
+        address: true,
+        city: true,
         createdAt: true,
       },
     });
@@ -132,28 +140,10 @@ router.get("/providers/:id", async (req, res) => {
       return res.status(404).json({ error: "Provider not found" });
     }
 
-    const stats = await prisma.review.aggregate({
-      where: {
-        providerId,
-      },
-      _count: {
-        id: true,
-      },
-      _avg: {
-        rating: true,
-      },
-    });
-
     return res.json({
-      id: provider.id,
-      name: provider.name,
-      email: provider.email,
-      role: provider.role,
+      ...provider,
       bio: provider.bio || "",
       profileImage: publicImageUrl(req, provider.profileImage),
-      createdAt: provider.createdAt,
-      reviewCount: Number(stats?._count?.id || 0),
-      avgRating: Number(Number(stats?._avg?.rating || 0).toFixed(1)),
     });
   } catch (error) {
     console.error("GET /providers/:id error:", error);

@@ -25,33 +25,24 @@ function formatWhen(value) {
   }).format(date);
 }
 
- function notificationTarget(item) {
+function notificationTarget(item) {
   const type = String(item?.type || "").toLowerCase();
   const refId = item?.refId ?? item?.ref_id ?? null;
 
-  if (type.includes("quote_offer") || type.includes("quote")) {
-    return "/my-quotes";
-  }
-
-  if (type.includes("quote_request")) {
-    return "/provider/quotes";
-  }
-
-  if (type.includes("booking_status")) {
-    return "/my-bookings";
-  }
-
-  if (type === "booking") {
-    return "/provider/bookings";
-  }
-
-  if (type.includes("provider")) {
-    return "/provider/bookings";
-  }
+  if (type === "demand_request") return "/provider/demands";
+  if (type === "demand_offer") return "/demand-requests";
+  if (type === "demand_won") return "/provider/bookings";
+  if (type === "demand_offer_rejected") return "/provider/demands";
+  if (type === "booking_created") return "/my-bookings";
 
   if (refId && type.includes("message")) {
     return `/messages/${refId}`;
   }
+
+  if (type.includes("quote_request")) return "/provider/quotes";
+  if (type.includes("quote_offer") || type.includes("quote")) return "/my-quotes";
+  if (type.includes("booking_status")) return "/my-bookings";
+  if (type === "booking") return "/provider/bookings";
 
   return null;
 }
@@ -69,8 +60,7 @@ export default function NotificationBell() {
     try {
       const data = await fetchUnreadCount();
       setUnread(Number(data?.count || 0));
-    } catch (err) {
-      console.error("Failed to load unread count:", err);
+    } catch {
       setUnread(0);
     }
   }
@@ -80,8 +70,7 @@ export default function NotificationBell() {
       setLoading(true);
       const data = await fetchNotifications();
       setItems(Array.isArray(data) ? data : data?.items || []);
-    } catch (err) {
-      console.error("Failed to load notifications:", err);
+    } catch {
       setItems([]);
     } finally {
       setLoading(false);
@@ -100,7 +89,6 @@ export default function NotificationBell() {
   async function handleMarkAllRead() {
     try {
       await markAllRead();
-
       setUnread(0);
       setItems((prev) =>
         prev.map((item) => ({
@@ -122,9 +110,7 @@ export default function NotificationBell() {
 
         setItems((prev) =>
           prev.map((n) =>
-            n.id === item.id
-              ? { ...n, isRead: 1, is_read: 1, read: 1 }
-              : n
+            n.id === item.id ? { ...n, isRead: 1, is_read: 1, read: 1 } : n
           )
         );
 
@@ -154,9 +140,7 @@ export default function NotificationBell() {
     }
 
     document.addEventListener("mousedown", handleOutsideClick);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-    };
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
   return (
