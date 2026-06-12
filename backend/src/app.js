@@ -16,7 +16,9 @@ import payoutsRoutes from "./routes/payouts.routes.js";
 import serviceImagesRoutes from "./routes/serviceImages.routes.js";
 import demandRoutes from "./routes/demand.routes.js";
 import walletRoutes from "./routes/wallet.routes.js";
-
+import withdrawalRoutes from "./routes/withdrawal.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
+ 
 import { uploadsDir } from "./middleware/upload.js";
 
 const app = express();
@@ -39,6 +41,9 @@ app.use("/", payoutsRoutes);
 app.use("/", serviceImagesRoutes);
 app.use(demandRoutes);
 app.use(walletRoutes);
+app.use("/withdrawals", withdrawalRoutes);
+app.use("/", adminRoutes);
+ 
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

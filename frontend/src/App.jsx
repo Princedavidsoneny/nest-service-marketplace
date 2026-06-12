@@ -24,6 +24,7 @@ import ProviderProfile from "./pages/ProviderProfile";
 import DemandRequests from "./pages/DemandRequests";
 import ProviderDemands from "./pages/ProviderDemands";
 import ProviderWallet from "./pages/ProviderWallet";
+import AdminWithdrawals from "./pages/AdminWithdrawals";
 
 import PrivacyPage from "./pages/PrivacyPage";
 import Terms from "./pages/Terms";
@@ -80,6 +81,15 @@ export default function App() {
             </RequireAuth>
           }
         />
+
+         <Route
+  path="/admin/withdrawals"
+  element={
+    <RequireAuth>
+      <AdminWithdrawals />
+    </RequireAuth>
+  }
+/>
 
         <Route
           path="messages/:bookingId"

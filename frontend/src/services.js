@@ -295,3 +295,65 @@ export async function assignDemandProvider(demandId, providerId) {
     body: JSON.stringify({ providerId }),
   });
 }
+
+export async function createWithdrawalRequest(payload) {
+  return request("/withdrawals", {
+    method: "POST",
+    headers: { ...authHeader() },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchMyWithdrawals() {
+  return request("/withdrawals/mine", {
+    headers: { ...authHeader() },
+  });
+}
+
+export async function fetchAdminWithdrawals() {
+  return request("/withdrawals/admin", {
+    headers: { ...authHeader() },
+  });
+}
+
+export async function approveWithdrawal(id) {
+  return request(`/withdrawals/${id}/approve`, {
+    method: "PATCH",
+    headers: { ...authHeader() },
+  });
+}
+
+export async function rejectWithdrawal(id) {
+  return request(`/withdrawals/${id}/reject`, {
+    method: "PATCH",
+    headers: { ...authHeader() },
+  });
+}
+
+ export async function fetchAdminUsers() {
+  return request("/admin/users", {
+    headers: { ...authHeader() },
+  });
+}
+
+export async function updateAdminUserRole(userId, role) {
+  return request(`/admin/users/${userId}/role`, {
+    method: "PATCH",
+    headers: { ...authHeader() },
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function suspendAdminUser(userId) {
+  return request(`/admin/users/${userId}/suspend`, {
+    method: "PATCH",
+    headers: { ...authHeader() },
+  });
+}
+
+export async function unsuspendAdminUser(userId) {
+  return request(`/admin/users/${userId}/unsuspend`, {
+    method: "PATCH",
+    headers: { ...authHeader() },
+  });
+}
