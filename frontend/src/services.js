@@ -131,9 +131,9 @@ export async function updateBookingStatus(id, status) {
   });
 }
 
- export async function confirmBookingCompleted(id) {
-  return request(`/bookings/${id}/confirm-completed`, {
-    method: "PATCH",
+  export async function confirmBookingCompleted(id) {
+  return request(`/bookings/${id}/confirm-completion`, {
+    method: "POST",
     headers: { ...authHeader() },
   });
 }
