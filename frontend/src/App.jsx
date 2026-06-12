@@ -25,6 +25,7 @@ import DemandRequests from "./pages/DemandRequests";
 import ProviderDemands from "./pages/ProviderDemands";
 import ProviderWallet from "./pages/ProviderWallet";
 import AdminWithdrawals from "./pages/AdminWithdrawals";
+import AdminDashboard from "./pages/AdminDashboard";
 
 import PrivacyPage from "./pages/PrivacyPage";
 import Terms from "./pages/Terms";
@@ -81,13 +82,12 @@ export default function App() {
             </RequireAuth>
           }
         />
-
-         <Route
+ <Route
   path="/admin/withdrawals"
   element={
-    <RequireAuth>
+    <RequireAdmin>
       <AdminWithdrawals />
-    </RequireAuth>
+    </RequireAdmin>
   }
 />
 
@@ -151,6 +151,15 @@ export default function App() {
   element={<ProviderWallet />}
 />
 
+
+<Route
+  path="admin"
+  element={
+    <RequireAdmin>
+      <AdminDashboard />
+    </RequireAdmin>
+  }
+/>
 
 
         <Route

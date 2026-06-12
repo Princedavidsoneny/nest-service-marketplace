@@ -58,9 +58,13 @@ export default function Layout() {
       : []),
     ...(user?.role === "customer" ? customerLinks : []),
     ...(user?.role === "provider" ? providerLinks : []),
-    ...(user?.role === "admin"
-      ? [{ to: "/admin/users", label: "Admin Users" }]
-      : []),
+      ...(user?.role === "admin"
+  ? [
+      { to: "/admin", label: "Admin Dashboard" },
+      { to: "/admin/users", label: "Admin Users" },
+      { to: "/admin/withdrawals", label: "Withdrawals" },
+    ]
+  : []),
     ...publicLinks,
   ];
 

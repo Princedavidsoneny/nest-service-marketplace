@@ -357,3 +357,23 @@ export async function unsuspendAdminUser(userId) {
     headers: { ...authHeader() },
   });
 }
+
+export async function verifyProviderAdmin(userId) {
+  return request(`/admin/users/${userId}/verify-provider`, {
+    method: "PATCH",
+    headers: { ...authHeader() },
+  });
+}
+
+export async function unverifyProviderAdmin(userId) {
+  return request(`/admin/users/${userId}/unverify-provider`, {
+    method: "PATCH",
+    headers: { ...authHeader() },
+  });
+}
+
+export async function fetchAdminStats() {
+  return request("/admin/stats", {
+    headers: { ...authHeader() },
+  });
+}

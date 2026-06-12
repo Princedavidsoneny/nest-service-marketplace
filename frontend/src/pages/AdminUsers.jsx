@@ -4,6 +4,8 @@ import {
   updateAdminUserRole,
   suspendAdminUser,
   unsuspendAdminUser,
+  verifyProviderAdmin,
+  unverifyProviderAdmin,
 } from "../services";
 
 export default function AdminUsers() {
@@ -31,7 +33,6 @@ export default function AdminUsers() {
       setErr("");
       setMsg("");
       setLoadingId(userId);
-
       await updateAdminUserRole(userId, role);
       setMsg("User role updated successfully.");
       await loadUsers();
@@ -64,11 +65,33 @@ export default function AdminUsers() {
     }
   }
 
+  async function toggleProviderVerification(user) {
+    try {
+      setErr("");
+      setMsg("");
+      setLoadingId(user.id);
+
+      if (user.isProviderVerified) {
+        await unverifyProviderAdmin(user.id);
+        setMsg("Provider verification removed.");
+      } else {
+        await verifyProviderAdmin(user.id);
+        setMsg("Provider verified successfully.");
+      }
+
+      await loadUsers();
+    } catch (e) {
+      setErr(e.message || "Failed to update provider verification");
+    } finally {
+      setLoadingId(null);
+    }
+  }
+
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 text-white">
+    <main className="mx-auto max-w-7xl px-4 py-10 text-white">
       <h1 className="text-4xl font-black">Admin Users</h1>
       <p className="mt-2 text-white/70">
-        View users, manage roles, and suspend accounts.
+        View users, manage roles, suspend accounts, and verify providers.
       </p>
 
       {err && (
@@ -84,7 +107,7 @@ export default function AdminUsers() {
       )}
 
       <section className="mt-8 overflow-x-auto rounded-3xl border border-white/10 bg-white/5 p-4">
-        <table className="w-full min-w-[950px] text-left">
+        <table className="w-full min-w-[1150px] text-left">
           <thead>
             <tr className="border-b border-white/10 text-white/60">
               <th className="p-3">ID</th>
@@ -92,8 +115,10 @@ export default function AdminUsers() {
               <th className="p-3">Email</th>
               <th className="p-3">Role</th>
               <th className="p-3">Status</th>
+              <th className="p-3">Provider Badge</th>
               <th className="p-3">Change Role</th>
-              <th className="p-3">Action</th>
+              <th className="p-3">Suspend</th>
+              <th className="p-3">Verify</th>
             </tr>
           </thead>
 
@@ -104,6 +129,7 @@ export default function AdminUsers() {
                 <td className="p-3">{u.name || "No name"}</td>
                 <td className="p-3">{u.email}</td>
                 <td className="p-3 font-bold capitalize">{u.role}</td>
+
                 <td className="p-3">
                   {u.isSuspended ? (
                     <span className="rounded-full bg-red-500/20 px-3 py-1 text-sm text-red-200">
@@ -113,6 +139,22 @@ export default function AdminUsers() {
                     <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-sm text-emerald-200">
                       Active
                     </span>
+                  )}
+                </td>
+
+                <td className="p-3">
+                  {u.role === "provider" ? (
+                    u.isProviderVerified ? (
+                      <span className="rounded-full bg-sky-500/20 px-3 py-1 text-sm text-sky-200">
+                        Verified ✓
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-white/10 px-3 py-1 text-sm text-white/60">
+                        Not verified
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-white/40">N/A</span>
                   )}
                 </td>
 
@@ -141,11 +183,34 @@ export default function AdminUsers() {
                     } disabled:opacity-50`}
                   >
                     {loadingId === u.id
-                      ? "Please wait..."
+                      ? "Wait..."
                       : u.isSuspended
                       ? "Unsuspend"
                       : "Suspend"}
                   </button>
+                </td>
+
+                <td className="p-3">
+                  {u.role === "provider" ? (
+                    <button
+                      type="button"
+                      disabled={loadingId === u.id}
+                      onClick={() => toggleProviderVerification(u)}
+                      className={`rounded-xl px-4 py-2 text-sm font-bold ${
+                        u.isProviderVerified
+                          ? "bg-slate-600 text-white"
+                          : "bg-sky-500 text-white"
+                      } disabled:opacity-50`}
+                    >
+                      {loadingId === u.id
+                        ? "Wait..."
+                        : u.isProviderVerified
+                        ? "Remove"
+                        : "Verify"}
+                    </button>
+                  ) : (
+                    <span className="text-white/40">N/A</span>
+                  )}
                 </td>
               </tr>
             ))}
